@@ -8,11 +8,12 @@ namespace PlcSoftware.Infrastructure.Modbus;
 /// any instant, in FIFO order. This is the single serialisation point called out by the design: all
 /// Modbus reads and writes go through the queue, never directly to the transport.
 ///
-/// <para>Lifecycle (<see cref="ConnectAsync"/> / <see cref="DisconnectAsync"/>) is forwarded to the
-/// inner client directly — it is connection setup/teardown, not a bus request, so it is not
-/// serialised with the read/write backlog. Argument validation and cancellation-before-validation
+/// <para>Lifecycle (<see cref="ConnectAsync"/> / <see cref="DisconnectAsync"/>) is routed through the
+/// same single-flight queue, so it is serialised with the read/write backlog: a disconnect queued
+/// behind an in-flight read waits for that read to complete before tearing down the transport, and
+/// never interrupts a request mid-frame. Argument validation and cancellation-before-validation
 /// remain the inner client's responsibility (pinned by <c>ModbusContractTests</c>); this decorator
-/// adds only the serialisation boundary.</para>
+/// adds the serialisation boundary.</para>
 ///
 /// <para><see cref="DisposeAsync"/> only shuts the queue down; the wrapped client is intentionally
 /// not disposed here, because its lifetime is owned by whoever built it (e.g. the transport
@@ -26,7 +27,7 @@ public sealed class QueuedModbusClient : IModbusClient
     private readonly IModbusClient _inner;
     private readonly ModbusRequestQueue _queue;
 
-    /// <summary>Wraps <paramref name="inner"/>, routing every read/write through a new queue.</summary>
+    /// <summary>Wraps <paramref name="inner"/>, routing every bus operation (read, write, lifecycle) through a new queue.</summary>
     public QueuedModbusClient(IModbusClient inner)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
@@ -34,10 +35,10 @@ public sealed class QueuedModbusClient : IModbusClient
     }
 
     public Task ConnectAsync(CancellationToken cancellationToken)
-        => _inner.ConnectAsync(cancellationToken);
+        => _queue.EnqueueAsync(_inner.ConnectAsync, cancellationToken);
 
     public Task DisconnectAsync(CancellationToken cancellationToken)
-        => _inner.DisconnectAsync(cancellationToken);
+        => _queue.EnqueueAsync(_inner.DisconnectAsync, cancellationToken);
 
     public Task<bool[]> ReadCoilsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
         => _queue.EnqueueAsync(token => _inner.ReadCoilsAsync(slaveId, address, count, token), cancellationToken);

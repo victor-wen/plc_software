@@ -16,7 +16,15 @@ namespace PlcSoftware.Infrastructure.Tests.Modbus;
 ///   - shutting the queue down cancels the in-flight and every pending request, and rejects further
 ///     submissions;
 ///   - an inner failure propagates to that caller only while the queue keeps serving the rest;
-///   - cancelling a caller token aborts only that request, leaving the others to proceed.
+///   - cancelling a caller token aborts only that request, leaving the others to proceed;
+///   - teardown is bounded: an operation that ignores cancellation cannot hang <c>DisposeAsync</c>
+///     forever;
+///   - an item whose caller cancels after enqueue but before worker pickup is skipped, never invoking
+///     its operation;
+///   - lifecycle (<see cref="QueuedModbusClient.ConnectAsync"/> /
+///     <see cref="QueuedModbusClient.DisconnectAsync"/>) is serialised with the bus backlog, so a
+///     disconnect queued behind an in-flight read waits for it to finish before tearing down the
+///     transport.
 /// </summary>
 public class ModbusRequestQueueTests
 {
@@ -116,6 +124,112 @@ public class ModbusRequestQueueTests
         Assert.Equal(2, values.Length);
     }
 
+    [Fact]
+    public async Task DisconnectQueuedBehindRead_WaitsForReadToComplete()
+    {
+        var log = new List<string>();
+        var probe = new ProbeClient(log);
+        await using var client = new QueuedModbusClient(probe);
+
+        var read = client.ReadCoilsAsync(1, 0, 2, CancellationToken.None);
+        await probe.FirstReadStarted;                    // read in flight, blocked on the gate
+        var disconnect = client.DisconnectAsync(CancellationToken.None);
+
+        // The disconnect must not start while the read still owns the bus.
+        Assert.Equal(new[] { "ReadCoils" }, log);
+
+        probe.Release();
+        await Task.WhenAll(read, disconnect);
+
+        Assert.Equal(new[] { "ReadCoils", "Disconnect" }, log);
+    }
+
+    [Fact]
+    public async Task ConnectQueuedBehindRead_WaitsForReadToComplete()
+    {
+        var log = new List<string>();
+        var probe = new ProbeClient(log);
+        await using var client = new QueuedModbusClient(probe);
+
+        var read = client.ReadCoilsAsync(1, 0, 2, CancellationToken.None);
+        await probe.FirstReadStarted;                    // read in flight, blocked on the gate
+        var connect = client.ConnectAsync(CancellationToken.None);
+
+        // The connect must not run while a read still owns the bus.
+        Assert.Equal(new[] { "ReadCoils" }, log);
+
+        probe.Release();
+        await Task.WhenAll(read, connect);
+
+        Assert.Equal(new[] { "ReadCoils", "Connect" }, log);
+    }
+
+    [Fact]
+    public async Task Dispose_WithNeverCompletingOperation_CompletesWithinBudget()
+    {
+        // A tight shutdown budget so the test proves bounded teardown instead of hanging.
+        var queue = new ModbusRequestQueue(TimeSpan.FromMilliseconds(100));
+        await using var queueRef = queue;
+
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // An operation that ignores cancellation and can never complete of its own accord.
+        _ = queue.EnqueueAsync<int>(
+            _ =>
+            {
+                started.TrySetResult(true);
+                return Task.Delay(-1, CancellationToken.None).ContinueWith(_ => 0);
+            },
+            CancellationToken.None);
+
+        await started.Task;                              // the op is now in flight, never finishing
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await queue.DisposeAsync();                      // must return, not hang
+        watch.Stop();
+
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"Shutdown hung for {watch.Elapsed}.");
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => queue.EnqueueAsync<object?>(_ => Task.FromResult<object?>(null), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CallerCancelled_AfterEnqueue_BeforePickup_SkipsOperation()
+    {
+        var queue = new ModbusRequestQueue();
+        await using var queueRef = queue;
+
+        var firstStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Hold the worker so a second item sits in the channel, not yet picked up.
+        var first = queue.EnqueueAsync(
+            async token =>
+            {
+                firstStarted.TrySetResult(true);
+                await gate.Task;
+            },
+            CancellationToken.None);
+        await firstStarted.Task;
+
+        var cts = new CancellationTokenSource();
+        var invoked = false;
+        var second = queue.EnqueueAsync(
+            token =>
+            {
+                invoked = true;
+                return Task.CompletedTask;
+            },
+            cts.Token);
+
+        cts.Cancel();                                    // caller cancels after enqueue, before pickup
+        gate.TrySetResult(true);                         // let the worker reach the second item
+        await first;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => second);
+        Assert.False(invoked);
+    }
+
     /// <summary>
     /// A scripted <see cref="IModbusClient"/> whose reads block on a controllable gate so the tests
     /// can deterministically hold a request in flight. Reads record the name of every executed
@@ -176,9 +290,19 @@ public class ModbusRequestQueueTests
             return Task.CompletedTask;
         }
 
-        public Task ConnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task ConnectAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Log("Connect");
+            return Task.CompletedTask;
+        }
 
-        public Task DisconnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task DisconnectAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Log("Disconnect");
+            return Task.CompletedTask;
+        }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 

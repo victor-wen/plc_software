@@ -22,7 +22,16 @@ namespace PlcSoftware.Infrastructure.Modbus;
 ///   <item><b>Shutdown</b> — <see cref="ShutdownAsync"/> is a hard stop, not a drain: it aborts the
 ///   in-flight operation and cancels every queued (pending) operation with
 ///   <see cref="OperationCanceledException"/>, waits for the worker to exit, and afterwards rejects
-///   further submissions with <see cref="ObjectDisposedException"/>.</item>
+///   further submissions with <see cref="ObjectDisposedException"/>. The wait for the worker is
+///   <b>bounded</b>: teardown stops waiting once <see cref="DisposeAsync"/>'s internal timeout budget
+///   (or the caller-supplied <see cref="CancellationToken"/> to <see cref="ShutdownAsync"/>) elapses,
+///   so an operation that ignores cancellation cannot make shutdown hang forever — the queue is still
+///   closed and pending items cancelled, and a worker left running an un-cancellable operation is
+///   abandoned rather than hung on. <see cref="ShutdownAsync"/> caches its teardown task, so repeated
+///   or concurrent calls await the same real completion.</item>
+///   <item><b>Skips pre-cancelled items</b> — if a caller cancels after enqueueing but before the
+///   worker picks the item up, the worker completes that item as cancelled without invoking its
+///   operation.</item>
 ///   <item><b>Failure isolation</b> — if an operation throws, that exception is delivered to its own
 ///   caller's task only; the worker keeps processing subsequent queued work.</item>
 /// </list>
@@ -32,10 +41,19 @@ public sealed class ModbusRequestQueue : IAsyncDisposable
     private readonly Channel<QueueItem> _channel = Channel.CreateUnbounded<QueueItem>();
     private readonly CancellationTokenSource _shutdownCts = new();
     private readonly Task _worker;
+    private readonly TimeSpan _shutdownTimeout;
+    private readonly object _shutdownLock = new();
+    private Task? _shutdownTask;
     private int _shutdown;
 
-    public ModbusRequestQueue()
+    /// <summary>
+    /// Creates a queue. <paramref name="shutdownTimeout"/> bounds how long
+    /// <see cref="ShutdownAsync"/> / <see cref="DisposeAsync"/> waits for the worker to exit before
+    /// giving up (and abandoning an operation that ignores cancellation); it defaults to 5 seconds.
+    /// </summary>
+    public ModbusRequestQueue(TimeSpan? shutdownTimeout = null)
     {
+        _shutdownTimeout = shutdownTimeout ?? TimeSpan.FromSeconds(5);
         _worker = WorkerLoopAsync();
     }
 
@@ -89,16 +107,31 @@ public sealed class ModbusRequestQueue : IAsyncDisposable
 
     /// <summary>
     /// Hard-stops the queue: cancels the in-flight operation, cancels every still-queued operation,
-    /// waits for the worker to exit, and rejects all later submissions. Safe to call more than once;
-    /// subsequent calls return immediately.
+    /// waits for the worker to exit, and rejects all later submissions. The wait for the worker is
+    /// bounded by <c>shutdownTimeout</c> (see the constructor) and by <paramref name="cancellationToken"/>,
+    /// so it can never hang on an operation that ignores cancellation. Safe to call more than once;
+    /// the teardown task is cached, so concurrent or repeated calls await the same real completion.
     /// </summary>
-    public async Task ShutdownAsync()
+    public Task ShutdownAsync(CancellationToken cancellationToken = default)
     {
-        if (Interlocked.Exchange(ref _shutdown, 1) != 0)
+        lock (_shutdownLock)
         {
-            return;
-        }
+            // Cache the teardown task so a second caller (or a second DisposeAsync) awaits the real
+            // completion rather than returning while the worker is still being torn down.
+            if (_shutdownTask is null)
+            {
+                _shutdown = 1;
+                _shutdownTask = ShutdownCoreAsync(cancellationToken);
+            }
 
+            return _shutdownTask;
+        }
+    }
+
+    public ValueTask DisposeAsync() => new(ShutdownAsync());
+
+    private async Task ShutdownCoreAsync(CancellationToken cancellationToken)
+    {
         // Cancel first so the worker stops reading (its WaitToReadAsync token is shared) and the
         // in-flight operation is aborted; then fail every operation still sitting in the channel.
         _shutdownCts.Cancel();
@@ -111,22 +144,21 @@ public sealed class ModbusRequestQueue : IAsyncDisposable
 
         try
         {
-            // The worker exits via its shutdown token (or naturally once the channel is drained);
-            // an in-flight operation that ignores cancellation would keep us here, which is the
-            // correct semantics for a serial bus we must not tear down mid-frame.
-            await _worker;
+            // The worker exits via its shutdown token (or naturally once the channel is drained). It
+            // may also be wedged on an operation that ignores cancellation; bound the wait so teardown
+            // still completes (queue closed, pending items cancelled above) instead of hanging.
+            await _worker.WaitAsync(_shutdownTimeout, cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
         {
-            // The worker exits via its shutdown token; nothing further to do.
+            // Budget (or caller cancellation) elapsed before the worker exited. A worker still
+            // running an un-cancellable operation is abandoned here; the queue is already closed.
         }
         finally
         {
             _shutdownCts.Dispose();
         }
     }
-
-    public ValueTask DisposeAsync() => new(ShutdownAsync());
 
     private async Task WorkerLoopAsync()
     {
@@ -149,6 +181,15 @@ public sealed class ModbusRequestQueue : IAsyncDisposable
 
     private async Task ExecuteAsync(QueueItem item)
     {
+        // The caller may have cancelled after enqueueing but before the worker picked this item up; in
+        // that case complete it as cancelled without invoking the operation (it would never be
+        // observed, and must not be executed).
+        if (item.CallerToken.IsCancellationRequested)
+        {
+            item.Completion.TrySetCanceled(item.CallerToken);
+            return;
+        }
+
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token, item.CallerToken);
         try
         {
