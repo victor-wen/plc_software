@@ -13,6 +13,11 @@ namespace PlcSoftware.Infrastructure.Simulation;
 /// holding registers are host-writable (FC05/FC06); discrete inputs and input registers represent
 /// field-side values that the simulation engine seeds via <see cref="WriteDiscreteInput"/> /
 /// <see cref="WriteInputRegister"/>.
+///
+/// Thread ownership: an instance is <b>single-threaded by design</b> — it provides no internal
+/// synchronization and is not safe for concurrent access. The owning simulation engine must serialize
+/// all reads and writes onto one thread/loop; readers and writers must never touch the same memory
+/// from different threads simultaneously.
 /// </summary>
 public sealed class SimulationMemory
 {

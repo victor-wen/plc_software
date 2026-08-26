@@ -236,6 +236,24 @@ public class InMemoryModbusClientTests
     }
 
     [Fact]
+    public async Task ReadDiscreteInputs_CancelledToken_ThrowsOperationCanceled()
+    {
+        var client = await CreateConnectedClientAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => client.ReadDiscreteInputsAsync(1, 0, 1, Cancelled));
+    }
+
+    [Fact]
+    public async Task ReadInputRegisters_CancelledToken_ThrowsOperationCanceled()
+    {
+        var client = await CreateConnectedClientAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => client.ReadInputRegistersAsync(1, 0, 1, Cancelled));
+    }
+
+    [Fact]
     public async Task ReadHoldingRegisters_CancelledToken_ThrowsOperationCanceled()
     {
         var client = await CreateConnectedClientAsync();
@@ -262,46 +280,137 @@ public class InMemoryModbusClientTests
             () => client.WriteSingleRegisterAsync(1, 0, 0, Cancelled));
     }
 
-    // --- Disconnected-state rejection --------------------------------------------
+    // --- Cross-area isolation (FC05/FC06 must not leak into FC02/FC04 areas) ----
 
     [Fact]
-    public async Task ReadCoils_WhenDisconnected_ThrowsInvalidOperation()
+    public async Task WriteSingleCoil_DoesNotAffectDiscreteInputArea()
     {
-        var client = new InMemoryModbusClient();
+        var client = await CreateConnectedClientAsync();
 
-        await Assert.ThrowsAnyAsync<InvalidOperationException>(
-            () => client.ReadCoilsAsync(1, 0, 1, CancellationToken.None));
+        await client.WriteSingleCoilAsync(1, 0x0003, true, CancellationToken.None);
+
+        Assert.False((await client.ReadDiscreteInputsAsync(1, 0x0003, 1, CancellationToken.None))[0]);
     }
 
     [Fact]
-    public async Task WriteSingleCoil_WhenDisconnected_ThrowsInvalidOperation()
+    public async Task WriteSingleRegister_DoesNotAffectInputRegisterArea()
     {
-        var client = new InMemoryModbusClient();
+        var client = await CreateConnectedClientAsync();
 
-        await Assert.ThrowsAnyAsync<InvalidOperationException>(
-            () => client.WriteSingleCoilAsync(1, 0, true, CancellationToken.None));
+        await client.WriteSingleRegisterAsync(1, 0x0100, 0x1234, CancellationToken.None);
+
+        Assert.Equal((ushort)0, (await client.ReadInputRegistersAsync(1, 0x0100, 1, CancellationToken.None))[0]);
+    }
+
+    // --- Boundary happy paths ---------------------------------------------------
+
+    [Fact]
+    public async Task ReadCoils_MaxBitsCount_Succeeds()
+    {
+        var client = await CreateConnectedClientAsync();
+
+        var coils = await client.ReadCoilsAsync(1, 0, 2000, CancellationToken.None);
+
+        Assert.Equal(2000, coils.Length);
+        Assert.All(coils, c => Assert.False(c));
     }
 
     [Fact]
-    public async Task Connect_ThenDisconnect_RequestIsRejected()
+    public async Task ReadHoldingRegisters_MaxRegistersCount_Succeeds()
+    {
+        var client = await CreateConnectedClientAsync();
+
+        var registers = await client.ReadHoldingRegistersAsync(1, 0, 125, CancellationToken.None);
+
+        Assert.Equal(125, registers.Length);
+        Assert.All(registers, r => Assert.Equal((ushort)0, r));
+    }
+
+    [Fact]
+    public async Task ReadCoils_LastAddressOfSpace_Allowed()
+    {
+        var client = await CreateConnectedClientAsync();
+
+        var coils = await client.ReadCoilsAsync(1, 0xFFFF, 1, CancellationToken.None);
+
+        Assert.False(coils[0]);
+    }
+
+    [Fact]
+    public async Task ReadHoldingRegisters_LastAddressOfSpace_Allowed()
+    {
+        var client = await CreateConnectedClientAsync();
+
+        var registers = await client.ReadHoldingRegistersAsync(1, 0xFFFF, 1, CancellationToken.None);
+
+        Assert.Equal((ushort)0, registers[0]);
+    }
+
+    // --- State rejection: unconnected / disconnected / disposed -----------------
+
+    // These assert the exact exception type (not ThrowsAnyAsync): the
+    // disconnected-state contract is InvalidOperationException, which must never be
+    // satisfied by an ObjectDisposedException (wrapping would mask a disposal bug).
+    private static async Task AssertUnconnectedRejectionsAsync(InMemoryModbusClient client)
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReadCoilsAsync(1, 0, 1, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReadDiscreteInputsAsync(1, 0, 1, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReadHoldingRegistersAsync(1, 0, 1, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReadInputRegistersAsync(1, 0, 1, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.WriteSingleCoilAsync(1, 0, true, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.WriteSingleRegisterAsync(1, 0, 0, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AllRequests_WhenNeverConnected_ThrowInvalidOperation()
+    {
+        var client = new InMemoryModbusClient();
+
+        await AssertUnconnectedRejectionsAsync(client);
+    }
+
+    [Fact]
+    public async Task AllRequests_WhenDisconnected_ThrowInvalidOperation()
     {
         var client = await CreateConnectedClientAsync();
         await client.DisconnectAsync(CancellationToken.None);
 
-        await Assert.ThrowsAnyAsync<InvalidOperationException>(
-            () => client.ReadCoilsAsync(1, 0, 1, CancellationToken.None));
+        await AssertUnconnectedRejectionsAsync(client);
     }
 
     // --- DisposeAsync lifecycle --------------------------------------------------
 
     [Fact]
-    public async Task DisposeAsync_ReleasesResources_SubsequentReadThrows()
+    public async Task Connect_AfterDispose_ThrowsObjectDisposed()
     {
-        var client = await CreateConnectedClientAsync();
-
+        var client = new InMemoryModbusClient();
         await client.DisposeAsync();
 
-        await Assert.ThrowsAnyAsync<ObjectDisposedException>(
-            () => client.ReadCoilsAsync(1, 0, 1, CancellationToken.None));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ConnectAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Disconnect_AfterDispose_ThrowsObjectDisposed()
+    {
+        var client = new InMemoryModbusClient();
+        await client.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DisconnectAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AllRequests_AfterDispose_ThrowObjectDisposed()
+    {
+        var client = new InMemoryModbusClient();
+        await client.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ConnectAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.DisconnectAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ReadCoilsAsync(1, 0, 1, CancellationToken.None));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ReadDiscreteInputsAsync(1, 0, 1, CancellationToken.None));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ReadHoldingRegistersAsync(1, 0, 1, CancellationToken.None));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ReadInputRegistersAsync(1, 0, 1, CancellationToken.None));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.WriteSingleCoilAsync(1, 0, true, CancellationToken.None));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.WriteSingleRegisterAsync(1, 0, 0, CancellationToken.None));
     }
 }

@@ -14,6 +14,12 @@ namespace PlcSoftware.Infrastructure.Simulation;
 /// honoured first, then reads must satisfy <see cref="ModbusLimits"/> count/address-space bounds.
 ///
 /// The <c>slaveId</c> argument is accepted but ignored — there is a single simulated device.
+///
+/// Ownership: like <see cref="SimulationMemory"/>, a client is single-owner and not thread-safe.
+/// The connected/disposed state flags are intentionally <b>not</b> declared <c>volatile</c>: they are
+/// written and read only from the one simulation-engine loop that owns this instance, so no
+/// multi-threaded memory-ordering guarantees are required. Concurrent access from multiple threads
+/// is not supported.
 /// </summary>
 public sealed class InMemoryModbusClient : IModbusClient
 {
@@ -34,9 +40,18 @@ public sealed class InMemoryModbusClient : IModbusClient
     /// <summary>Backing memory, exposed so the simulation engine can seed field-side inputs.</summary>
     public SimulationMemory Memory => _memory;
 
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(InMemoryModbusClient));
+        }
+    }
+
     public Task ConnectAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfDisposed();
         _connected = true;
         return Task.CompletedTask;
     }
@@ -44,6 +59,7 @@ public sealed class InMemoryModbusClient : IModbusClient
     public Task DisconnectAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfDisposed();
         _connected = false;
         return Task.CompletedTask;
     }
@@ -108,10 +124,7 @@ public sealed class InMemoryModbusClient : IModbusClient
 
     private void EnsureConnected()
     {
-        if (_disposed)
-        {
-            throw new ObjectDisposedException(nameof(InMemoryModbusClient));
-        }
+        ThrowIfDisposed();
 
         if (!_connected)
         {
