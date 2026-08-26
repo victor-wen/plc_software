@@ -68,7 +68,7 @@ public sealed class InMemoryModbusClient : IModbusClient
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureConnected();
-        ValidateReadRange(address, count, ModbusLimits.MaxBitsPerRead);
+        ModbusReadRange.Validate(address, count, ModbusLimits.MaxBitsPerRead);
         return Task.FromResult(_memory.ReadCoils(address, count));
     }
 
@@ -76,7 +76,7 @@ public sealed class InMemoryModbusClient : IModbusClient
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureConnected();
-        ValidateReadRange(address, count, ModbusLimits.MaxBitsPerRead);
+        ModbusReadRange.Validate(address, count, ModbusLimits.MaxBitsPerRead);
         return Task.FromResult(_memory.ReadDiscreteInputs(address, count));
     }
 
@@ -84,7 +84,7 @@ public sealed class InMemoryModbusClient : IModbusClient
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureConnected();
-        ValidateReadRange(address, count, ModbusLimits.MaxRegistersPerRead);
+        ModbusReadRange.Validate(address, count, ModbusLimits.MaxRegistersPerRead);
         return Task.FromResult(_memory.ReadHoldingRegisters(address, count));
     }
 
@@ -92,7 +92,7 @@ public sealed class InMemoryModbusClient : IModbusClient
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureConnected();
-        ValidateReadRange(address, count, ModbusLimits.MaxRegistersPerRead);
+        ModbusReadRange.Validate(address, count, ModbusLimits.MaxRegistersPerRead);
         return Task.FromResult(_memory.ReadInputRegisters(address, count));
     }
 
@@ -129,27 +129,6 @@ public sealed class InMemoryModbusClient : IModbusClient
         if (!_connected)
         {
             throw new InvalidOperationException("The Modbus client is not connected.");
-        }
-    }
-
-    private static void ValidateReadRange(ushort address, ushort count, int maxCount)
-    {
-        if (count == 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(count), count, "count must be greater than 0.");
-        }
-
-        if (count > maxCount)
-        {
-            throw new ArgumentOutOfRangeException(nameof(count), count, $"count must be no greater than {maxCount}.");
-        }
-
-        if (address + count > ModbusLimits.AddressSpaceSize)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(address),
-                address,
-                $"address + count must not exceed the {ModbusLimits.AddressSpaceSize}-wide Modbus address space.");
         }
     }
 }
