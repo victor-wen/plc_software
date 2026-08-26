@@ -16,4 +16,10 @@ public sealed class PointDefinition
 
     /// <summary>True when the point may be written by the host.</summary>
     public bool IsWritable { get; set; }
+
+    /// <summary>
+    /// True when the point was added by the host-side project (marked PLC 新增 in the point
+    /// baseline, e.g. D105.bit0 and D213) and must exist for the supervisory control to function.
+    /// </summary>
+    public bool IsPlcNew { get; set; }
 }

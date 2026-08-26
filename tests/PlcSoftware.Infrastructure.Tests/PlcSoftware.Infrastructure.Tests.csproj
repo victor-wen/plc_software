@@ -23,4 +23,8 @@
     <ProjectReference Include="..\..\src\PlcSoftware.Infrastructure\PlcSoftware.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\..\config\**\*.json" Link="config\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
