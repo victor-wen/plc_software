@@ -12,7 +12,7 @@ namespace PlcSoftware.Core.Services;
 /// <para><b>Process block</b> (D200-D213, protocol offsets 100-113). The register at index <c>i</c> is
 /// <c>D(200+i)</c>. It decodes the step number (D200), the parameter registers (D201, D202, D204, D205),
 /// the current width (D203), the tuning delta (D210) and the two low-word-first UInt32 composites
-/// (D207+D208 production count, D212+D213 tuning pulse count).</para>
+/// (D207+D208 production count, D212+D213 width pulse count).</para>
 ///
 /// <para><b>Graceful partials.</b> A block shorter than its full span is decoded for whatever registers
 /// are present; absent registers are simply omitted, so a partial read never throws. A 32-bit composite
@@ -25,8 +25,10 @@ public static class RegisterDecoder
     private const string WatchdogKey = "D106";
     private const string FaultKey = "D110";
     private const string PressureBitKey = "M316";
-    private const string ProductionCountKey = "D207.D208";
-    private const string TuningPulseCountKey = "D212.D213";
+    /// <summary>Composite key for the low-word-first UInt32 production count (D207 low, D208 high).</summary>
+    public const string ProductionCountKey = "D207.D208";
+    /// <summary>Composite key for the low-word-first UInt32 width pulse count (D212 low, D213 high).</summary>
+    public const string WidthPulseCountKey = "D212.D213";
 
     /// <summary>Decodes the fast register block into a partial value dictionary.</summary>
     public static IReadOnlyDictionary<string, object?> DecodeFast(IReadOnlyList<ushort>? registers)
@@ -76,7 +78,7 @@ public static class RegisterDecoder
         if (Has(registers, 12) && Has(registers, 13))
         {
             // D213 high word first, D212 low word second.
-            values[TuningPulseCountKey] = Compose(registers[13], registers[12]);
+            values[WidthPulseCountKey] = Compose(registers[13], registers[12]);
         }
 
         return values;

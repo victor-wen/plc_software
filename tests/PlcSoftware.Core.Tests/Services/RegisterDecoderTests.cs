@@ -207,6 +207,13 @@ public class RegisterDecoderTests
         Assert.Empty(RegisterDecoder.DecodeProcess(null));
     }
 
+    [Fact]
+    public void CompositeKeys_ArePublicConstants_WithDesignValues()
+    {
+        Assert.Equal("D207.D208", RegisterDecoder.ProductionCountKey);
+        Assert.Equal("D212.D213", RegisterDecoder.WidthPulseCountKey);
+    }
+
     private static bool Bit(IReadOnlyDictionary<string, object?> values, string key) => (bool)values[key]!;
 
     private static ushort Word(IReadOnlyDictionary<string, object?> values, string key) => (ushort)values[key]!;
