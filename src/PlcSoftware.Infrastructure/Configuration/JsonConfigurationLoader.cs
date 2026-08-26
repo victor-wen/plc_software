@@ -46,16 +46,44 @@ public sealed class JsonConfigurationLoader
 
     public IReadOnlyList<FaultDefinition> LoadFaults(string path)
     {
-        using var stream = File.OpenRead(path);
-        return JsonSerializer.Deserialize<List<FaultDefinition>>(stream, _options)
-               ?? new List<FaultDefinition>();
+        var faults = ReadList<FaultDefinition>(path);
+        if (faults is null)
+        {
+            throw new InvalidDataException($@"Fault file '{path}' has no JSON content.");
+        }
+
+        // K1-K7 map safety-relevant interlocks; an empty list silently disables alarm
+        // reporting, so reject it outright and surface the offending file.
+        if (faults.Count == 0)
+        {
+            throw new InvalidDataException($@"Fault file '{path}' contains no fault definitions (K1-K7 are safety-relevant).");
+        }
+
+        return faults;
     }
 
     public IReadOnlyList<PointDefinition> LoadPointMap(string path)
     {
+        var points = ReadList<PointDefinition>(path);
+        if (points is null)
+        {
+            throw new InvalidDataException($@"Point map file '{path}' has no JSON content.");
+        }
+
+        return points;
+    }
+
+    private List<T>? ReadList<T>(string path)
+    {
         using var stream = File.OpenRead(path);
-        return JsonSerializer.Deserialize<List<PointDefinition>>(stream, _options)
-               ?? new List<PointDefinition>();
+        try
+        {
+            return JsonSerializer.Deserialize<List<T>>(stream, _options);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException($@"File '{path}' is not valid JSON: {ex.Message}", ex);
+        }
     }
 
     private AppSettingsDto ReadAppSettings(string path)

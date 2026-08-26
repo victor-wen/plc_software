@@ -99,4 +99,70 @@ public class PointMapValidatorTests
 
         Assert.Contains(errors, e => e.Contains("address", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Theory]
+    [InlineData("Q0")]
+    [InlineData("FOO")]
+    public void IllegalAreaLetter_ProducesError(string address)
+    {
+        var points = new List<PointDefinition> { Point(address, 0) };
+
+        var errors = PointMapValidator.Validate(points);
+
+        Assert.Contains(errors, e => e.Contains("area", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("X7.bit1")]
+    [InlineData("Y3.bit2")]
+    [InlineData("M12.bit3")]
+    public void BitNotationOnNonDRegister_ProducesError(string address)
+    {
+        // Include the required PLC points so the only .bit error is the one under test.
+        var points = new List<PointDefinition>
+        {
+            Point(address, 0),
+            Point("D105.bit0", 5),
+            Point("D106", 6, writable: true),
+            Point("D213", 7),
+        };
+
+        var errors = PointMapValidator.Validate(points);
+
+        Assert.Contains(errors, e => e.Contains("only D registers use .bit", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("D105.bit+1")]
+    [InlineData("D105.bit1 ")]
+    [InlineData("D105.bit 1")]
+    public void BitIndexNotStrictlyDigits_ProducesError(string address)
+    {
+        // Include the required PLC points so the only .bit error is the one under test.
+        var points = new List<PointDefinition>
+        {
+            Point(address, 0),
+            Point("D105.bit0", 5),
+            Point("D106", 6, writable: true),
+            Point("D213", 7),
+        };
+
+        var errors = PointMapValidator.Validate(points);
+
+        Assert.Contains(errors, e => e.Contains("Illegal bit index", StringComparison.OrdinalIgnoreCase)
+                                     && e.Contains(address, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ValidDRegisterBit0_ProducesNoErrors()
+    {
+        var points = new List<PointDefinition>
+        {
+            Point("D105.bit0", 0),
+            Point("D106", 1, writable: true),
+            Point("D213", 2),
+        };
+
+        Assert.Empty(PointMapValidator.Validate(points));
+    }
 }

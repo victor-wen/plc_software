@@ -50,7 +50,7 @@ public static class PointMapValidator
             }
             else
             {
-                ValidateBitIndex(address, errors);
+                ValidateAddress(address, errors);
             }
 
             if (address is not null && !seenLogical.Add(address))
@@ -87,16 +87,33 @@ public static class PointMapValidator
         return errors;
     }
 
-    private static void ValidateBitIndex(string address, IList<string> errors)
+    private static void ValidateAddress(string address, IList<string> errors)
     {
+        var area = char.ToUpperInvariant(address[0]);
+        if (area is not ('X' or 'Y' or 'M' or 'D'))
+        {
+            errors.Add($@"Illegal area '{address[0]}' in address '{address}' (expected X/Y/M/D).");
+            return;
+        }
+
         var marker = address.IndexOf(".bit", StringComparison.OrdinalIgnoreCase);
         if (marker < 0)
         {
             return;
         }
 
+        // Only data registers D use .bitN notation; X/Y/M are plain bit addresses.
+        if (area != 'D')
+        {
+            errors.Add($@"Illegal bit notation '{address}': only D registers use .bitN (expected 0..{MaxBitIndex}).");
+            return;
+        }
+
         var token = address[(marker + 4)..];
-        if (!int.TryParse(token, out var bitIndex) || bitIndex < 0 || bitIndex > MaxBitIndex)
+        var isDigits = token.Length > 0 && token.All(char.IsAsciiDigit);
+        // int.TryParse with the default NumberStyles.Integer tolerates a leading '+' and
+        // surrounding whitespace, so we require the token to be digits only up front.
+        if (!isDigits || !int.TryParse(token, out var bitIndex) || bitIndex > MaxBitIndex)
         {
             errors.Add($@"Illegal bit index '{token}' in address '{address}' (expected 0..{MaxBitIndex}).");
         }
