@@ -5,11 +5,15 @@ namespace PlcSoftware.Core.Abstractions;
 /// lifecycle (<see cref="ConnectAsync"/> / <see cref="DisconnectAsync"/>) and liveness
 /// (<see cref="ProbeAsync"/>) operations.
 ///
-/// <para>Replay guarantee: there is deliberately no write path here. The supervisor can therefore
-/// never re-submit a write command after a reconnect. Host-issued writes that were still queued when
-/// the link dropped are cancelled by the owning request queue's shutdown on disconnect (see the
-/// Infrastructure queue), never replayed by the supervisor. New writes are only issued by callers once
-/// the link is back online.</para>
+/// <para>Every method observes the <c>cancellationToken</c> and surfaces cancellation as
+/// <see cref="OperationCanceledException"/>. The supervisor additionally bounds each call with a
+/// per-operation timeout; an implementation is expected to cancel promptly when its token is cancelled
+/// rather than rely on the supervisor to abandon the wait.</para>
+///
+/// <para>Structural guarantee: there is deliberately no write path here, so the supervisor cannot
+/// re-submit a write command by construction. <c>ConnectionSupervisor</c> surfaces only connect /
+/// disconnect / probe. Any guarantee about queued host writes being cancelled on disconnect is owned by
+/// a later wiring task and is intentionally not asserted here.</para>
 /// </summary>
 public interface ISupervisedConnection
 {

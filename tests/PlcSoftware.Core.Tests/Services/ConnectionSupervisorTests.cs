@@ -196,9 +196,8 @@ public class ConnectionSupervisorTests
     /// <summary>
     /// Reconnect must never replay queued host write commands. The supervisor's only surface to the
     /// connection is <see cref="ISupervisedConnection"/> (connect / disconnect / heartbeat probe),
-    /// which has no write path — so a re-established link never re-issues an earlier write. Host writes
-    /// that were still queued when the link dropped are cancelled by the queue's shutdown on disconnect,
-    /// never replayed here (see <see cref="ISupervisedConnection"/>).
+    /// which has no write path — so a re-established link never re-issues an earlier write by
+    /// construction (see <see cref="ISupervisedConnection"/>).
     /// </summary>
     [Fact]
     public async Task AfterReconnect_DoesNotReplayQueuedWrites()
@@ -265,8 +264,211 @@ public class ConnectionSupervisorTests
         Assert.Equal(ConnectionState.Disconnected, supervisor.CurrentState);
     }
 
-    private static ConnectionSupervisor CreateSupervisor(ISupervisedConnection connection, IAsyncDelay delay)
-        => new(connection, delay, heartbeatInterval: HeartbeatInterval, requiredFailures: RequiredFailures);
+    /// <summary>
+    /// An <see cref="OperationCanceledException"/> thrown by a probe while the supervision token is NOT
+    /// cancelled is a failed probe, not a shutdown signal. Three such probes must trip the heartbeat
+    /// threshold and drive the reconnect path, not silently stop the loop.
+    /// </summary>
+    [Fact]
+    public async Task ProbeCancellation_WithLiveToken_CountsAsFailure_NotShutdown()
+    {
+        var conn = new FakeConnection(connectSucceeds: true) { ProbeResult = false };
+        conn.EnqueueProbeException(new OperationCanceledException());
+        conn.EnqueueProbeException(new OperationCanceledException());
+        conn.EnqueueProbeException(new OperationCanceledException());
+        var manual = new ManualDelay();
+        var supervisor = CreateSupervisor(conn, manual);
+        var transitions = SnapshotTransitions(supervisor);
+
+        using var cts = new CancellationTokenSource();
+        var run = supervisor.RunAsync(cts.Token);
+        try
+        {
+            // OCE #1: failed probe, still Online (counter = 1), then blocks on the heartbeat delay.
+            await WaitFor(() => supervisor.CurrentState == ConnectionState.Online && manual.Requests.Count >= 1,
+                "supervisor never reached Online after the first cancelled probe.");
+            Assert.Equal(1, conn.ProbeCalls);
+            Assert.DoesNotContain(transitions, t => t is ConnectionState.HeartbeatLost or ConnectionState.Reconnecting);
+
+            // OCE #2: still Online, counter not yet tripped.
+            manual.ReleaseOne();
+            await WaitFor(() => supervisor.CurrentState == ConnectionState.Online && manual.Requests.Count >= 2,
+                "supervisor did not stay Online after the second cancelled probe.");
+            Assert.Equal(2, conn.ProbeCalls);
+
+            // OCE #3: trips the heartbeat threshold -> reconnect, instead of silently stopping.
+            manual.ReleaseOne();
+            await WaitFor(() => supervisor.CurrentState == ConnectionState.Reconnecting && manual.Requests.Count >= 3,
+                "supervisor did not enter Reconnecting after the third cancelled probe.");
+            Assert.Equal(3, conn.ProbeCalls);
+            Assert.Contains(transitions, t => t == ConnectionState.HeartbeatLost);
+            Assert.Contains(transitions, t => t == ConnectionState.Reconnecting);
+        }
+        finally
+        {
+            cts.Cancel();
+            await run;
+        }
+    }
+
+    /// <summary>
+    /// A graceful cancellation while the link is <see cref="ConnectionState.Online"/> must tear the
+    /// transport down before the loop exits, not just drop to <see cref="ConnectionState.Disconnected"/>.
+    /// </summary>
+    [Fact]
+    public async Task GracefulShutdown_WhileOnline_TearsDownLink()
+    {
+        var conn = new FakeConnection(connectSucceeds: true) { ProbeResult = true };
+        var manual = new ManualDelay();
+        var supervisor = CreateSupervisor(conn, manual);
+
+        using var cts = new CancellationTokenSource();
+        var run = supervisor.RunAsync(cts.Token);
+        // Reach Online: a healthy first probe puts the loop on the heartbeat delay.
+        await WaitFor(() => supervisor.CurrentState == ConnectionState.Online && manual.Requests.Count >= 1,
+            "never reached Online.");
+
+        cts.Cancel();
+        await run;                       // graceful shutdown joins the loop
+
+        Assert.Contains(conn.Calls, c => c == "Disconnect");
+        Assert.Equal(ConnectionState.Disconnected, supervisor.CurrentState);
+    }
+
+    /// <summary>
+    /// Two concurrent <see cref="ConnectionSupervisor.RunAsync"/> invocations would corrupt shared state.
+    /// The second concurrent call must throw <see cref="InvalidOperationException"/>.
+    /// </summary>
+    [Fact]
+    public async Task ConcurrentRunAsync_ThrowsInvalidOperationException()
+    {
+        var conn = new FakeConnection(connectSucceeds: false);
+        var manual = new ManualDelay();
+        var supervisor = CreateSupervisor(conn, manual);
+
+        using var cts = new CancellationTokenSource();
+        var first = supervisor.RunAsync(cts.Token);
+        await WaitFor(() => supervisor.CurrentState == ConnectionState.Reconnecting && manual.Requests.Count >= 1,
+            "first run never started.");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => supervisor.RunAsync(cts.Token));
+
+        cts.Cancel();
+        await first;
+    }
+
+    /// <summary>
+    /// A hung connect must be bounded by the per-call connect timeout and fall back to the backoff retry
+    /// path instead of stalling the loop forever.
+    /// </summary>
+    [Fact]
+    public async Task ConnectTimeout_TriggersBackoffRetry()
+    {
+        var conn = new FakeConnection(connectSucceeds: true) { ConnectNeverCompletes = true };
+        var manual = new ManualDelay();
+        var supervisor = CreateSupervisor(conn, manual, connectTimeout: TimeSpan.FromMilliseconds(40));
+
+        using var cts = new CancellationTokenSource();
+        var run = supervisor.RunAsync(cts.Token);
+        try
+        {
+            await WaitFor(() => supervisor.CurrentState == ConnectionState.Reconnecting && manual.Requests.Count >= 1,
+                "connect never timed out into backoff retry.");
+            Assert.Equal(TimeSpan.FromSeconds(1), manual.Requests[0]);
+            manual.ReleaseOne();
+        }
+        finally
+        {
+            cts.Cancel();
+            await run;
+        }
+    }
+
+    /// <summary>
+    /// A hung probe must be bounded by the per-call probe timeout; each timeout counts as a failed probe
+    /// and feeds the strike counter until the heartbeat threshold trips.
+    /// </summary>
+    [Fact]
+    public async Task ProbeTimeout_FeedsStrikeCounter()
+    {
+        var conn = new FakeConnection(connectSucceeds: true) { ProbeNeverCompletes = true };
+        var manual = new ManualDelay();
+        var supervisor = CreateSupervisor(conn, manual, probeTimeout: TimeSpan.FromMilliseconds(40));
+        var transitions = SnapshotTransitions(supervisor);
+
+        using var cts = new CancellationTokenSource();
+        var run = supervisor.RunAsync(cts.Token);
+        try
+        {
+            await WaitFor(() => supervisor.CurrentState == ConnectionState.Online && manual.Requests.Count >= 1,
+                "never reached Online after the first probe timeout.");
+            manual.ReleaseOne();   // probe #2 timeout
+            await WaitFor(() => supervisor.CurrentState == ConnectionState.Online && manual.Requests.Count >= 2,
+                "second probe timeout did not run.");
+            manual.ReleaseOne();   // probe #3 timeout -> trips heartbeat loss
+            await WaitFor(() => supervisor.CurrentState == ConnectionState.Reconnecting && manual.Requests.Count >= 3,
+                "third probe timeout did not trip heartbeat loss.");
+            Assert.Contains(transitions, t => t == ConnectionState.HeartbeatLost);
+            Assert.Contains(transitions, t => t == ConnectionState.Reconnecting);
+            Assert.True(conn.ProbeCalls >= 3, $"expected at least 3 probes, saw {conn.ProbeCalls}.");
+        }
+        finally
+        {
+            cts.Cancel();
+            await run;
+        }
+    }
+
+    /// <summary>
+    /// The heartbeat interval must be positive; a zero or negative value is a configuration bug.
+    /// </summary>
+    [Fact]
+    public void Constructor_RejectsNonPositiveHeartbeatInterval()
+    {
+        var conn = new FakeConnection(connectSucceeds: true);
+        var manual = new ManualDelay();
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ConnectionSupervisor(conn, manual, heartbeatInterval: TimeSpan.Zero));
+    }
+
+    /// <summary>
+    /// Backoff entries must be positive; a zero or negative entry would busy-loop with no backoff.
+    /// </summary>
+    [Fact]
+    public void Constructor_RejectsNonPositiveBackoffEntries()
+    {
+        var conn = new FakeConnection(connectSucceeds: true);
+        var manual = new ManualDelay();
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ConnectionSupervisor(conn, manual, backoff: new[] { TimeSpan.FromSeconds(1), TimeSpan.Zero }));
+    }
+
+    /// <summary>
+    /// Per-call timeouts must be positive; a zero or negative timeout would abort every call.
+    /// </summary>
+    [Fact]
+    public void Constructor_RejectsNonPositiveCallTimeouts()
+    {
+        var conn = new FakeConnection(connectSucceeds: true);
+        var manual = new ManualDelay();
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ConnectionSupervisor(conn, manual, connectTimeout: TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ConnectionSupervisor(conn, manual, probeTimeout: TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ConnectionSupervisor(conn, manual, disconnectTimeout: TimeSpan.Zero));
+    }
+
+    private static ConnectionSupervisor CreateSupervisor(
+        ISupervisedConnection connection,
+        IAsyncDelay delay,
+        TimeSpan? connectTimeout = null,
+        TimeSpan? probeTimeout = null,
+        TimeSpan? disconnectTimeout = null,
+        TimeSpan? heartbeatInterval = null,
+        int requiredFailures = RequiredFailures)
+        => new(connection, delay, heartbeatInterval ?? HeartbeatInterval, requiredFailures,
+            connectTimeout: connectTimeout, probeTimeout: probeTimeout, disconnectTimeout: disconnectTimeout);
 
     private static List<ConnectionState> SnapshotTransitions(ConnectionSupervisor supervisor)
     {
@@ -338,6 +540,7 @@ public class ConnectionSupervisorTests
         private readonly List<string> _calls = new();
         private readonly Queue<bool> _connectOutcomes = new();
         private readonly Queue<bool> _probeOutcomes = new();
+        private readonly Queue<Exception> _probeExceptions = new();
 
         /// <summary>Default connect outcome when no override is queued; <c>false</c> makes every connect fail.</summary>
         private readonly bool _connectSucceeds;
@@ -346,6 +549,12 @@ public class ConnectionSupervisorTests
         {
             _connectSucceeds = connectSucceeds;
         }
+
+        /// <summary>When <c>true</c>, <see cref="ConnectAsync"/> never completes (simulates a hung transport).</summary>
+        public bool ConnectNeverCompletes { get; set; }
+
+        /// <summary>When <c>true</c>, <see cref="ProbeAsync"/> never completes (simulates a hung transport).</summary>
+        public bool ProbeNeverCompletes { get; set; }
 
         /// <summary>Result of each probe when not overridden by <see cref="EnqueueProbe"/>; true = healthy.</summary>
         public bool ProbeResult { get; set; } = true;
@@ -388,11 +597,24 @@ public class ConnectionSupervisorTests
             }
         }
 
+        public void EnqueueProbeException(Exception exception)
+        {
+            lock (_sync)
+            {
+                _probeExceptions.Enqueue(exception);
+            }
+        }
+
         public Task ConnectAsync(CancellationToken cancellationToken)
         {
             lock (_sync)
             {
                 _calls.Add("Connect");
+            }
+
+            if (ConnectNeverCompletes)
+            {
+                return new TaskCompletionSource().Task;
             }
 
             bool succeeds;
@@ -424,6 +646,19 @@ public class ConnectionSupervisorTests
             lock (_sync)
             {
                 _calls.Add("Probe");
+            }
+
+            if (ProbeNeverCompletes)
+            {
+                return new TaskCompletionSource<bool>().Task;
+            }
+
+            lock (_sync)
+            {
+                if (_probeExceptions.Count > 0)
+                {
+                    throw _probeExceptions.Dequeue();
+                }
             }
 
             bool healthy;
