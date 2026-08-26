@@ -17,6 +17,20 @@ public sealed record PollingResult(
     TimeSpan Timestamp);
 
 /// <summary>
+/// Details of one failed group read (a non-cancellation failure), raised through
+/// <see cref="PollingService.ReadFailed"/>.
+///
+/// <see cref="Exception"/> is the transport error that made the read fail; <see cref="Timestamp"/> is the
+/// scheduled virtual offset at which the group was due. The connection-health layer observes these
+/// failures to enforce the design's 3-consecutive-failure rule (design §5.3); the transport supervisor
+/// owns offline detection, not this service.
+/// </summary>
+public sealed record PollingFailure(
+    PollingGroup Group,
+    Exception Exception,
+    TimeSpan Timestamp);
+
+/// <summary>
 /// Executes a <see cref="PollingPlan"/> over a single shared <see cref="IModbusClient"/>, using an
 /// injectable <see cref="IAsyncDelay"/> so it never blocks on real wall-clock time (tests drive it
 /// deterministically).
@@ -43,6 +57,14 @@ public sealed record PollingResult(
 /// <para><b>Time model.</b> <see cref="PollingResult.Timestamp"/> is the scheduled virtual offset from
 /// start (the sum of intervals advanced), not wall-clock elapsed time; reads are modelled as taking
 /// zero virtual time. This keeps the service deterministic and free of real time in tests.</para>
+///
+/// <para><b>Real-cadence drift.</b> Because the virtual clock only advances through the delay
+/// boundaries, a group's real cadence is its interval <em>plus</em> the time its read actually takes:
+/// a read is modelled as zero virtual time, so in production a slow read simply pushes the group's
+/// next tick later. There is <em>no catch-up</em> — after a slow cycle the group fires one interval
+/// after it finishes, so a sustained read latency drifts the cadence later over time rather than
+/// snapping back to a perfect rate. This is deliberate: it preserves the non-overlap guarantee and
+/// write fairness. Cadence is not corrected here; the transport supervisor owns connection health.</para>
 /// </summary>
 public sealed class PollingService
 {
@@ -71,6 +93,22 @@ public sealed class PollingService
 
     /// <summary>Raised after each completed group cycle, carrying that group's raw values.</summary>
     public event Action<PollingResult>? ResultAvailable;
+
+    /// <summary>
+    /// Raised after a group read fails with a non-cancellation exception (see <see cref="PollingFailure"/>).
+    ///
+    /// This is the observability hook for the connection-health layer: it can apply the design §5.3
+    /// 3-consecutive-failure rule on top of <see cref="PollingFailure"/>. The transport <em>supervisor</em>
+    /// owns offline detection and backoff — a failed read never tears this loop down.
+    /// </summary>
+    public event EventHandler<PollingFailure>? ReadFailed;
+
+    /// <summary>
+    /// Number of consecutive group-read failures since the last successful read (reset on every success).
+    /// Lets a connection-health layer observe the design §5.3 3-consecutive-failure rule without
+    /// subscribing to <see cref="ReadFailed"/>; offline detection remains the supervisor's job.
+    /// </summary>
+    public int ConsecutiveReadFailures { get; private set; }
 
     /// <summary>
     /// Runs the polling plan until <paramref name="cancellationToken"/> is cancelled. Awaiting the
@@ -109,9 +147,12 @@ public sealed class PollingService
                         _nextDue[index] += group.Interval;
                     }
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                catch (OperationCanceledException)
                 {
-                    // Shutdown: join the loop cleanly rather than surfacing the cancellation.
+                    // Shutdown: whether our own token was cancelled or an in-flight read was cancelled by
+                    // a foreign token (e.g. the transport queue shutting down), join the loop cleanly
+                    // rather than surfacing the cancellation and faulting the polling loop. Normal
+                    // shutdown and a foreign cancellation both end the loop; the loop never faults.
                     break;
                 }
             }
@@ -165,6 +206,8 @@ public sealed class PollingService
                     _now),
             };
 
+            // A successful read resets the consecutive-failure streak used by the connection-health layer.
+            ConsecutiveReadFailures = 0;
             ResultAvailable?.Invoke(result);
         }
         catch (OperationCanceledException)
@@ -172,9 +215,12 @@ public sealed class PollingService
             // Cancellation (shutdown) surfaces to RunAsync, which joins the loop. Don't swallow it.
             throw;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // A failed read is a per-cycle skip; the transport supervisor owns connection health.
+            // A failed read is a per-cycle skip; the transport supervisor owns connection health. Expose
+            // the failure so the connection-health layer can apply the design §5.3 3-failure rule.
+            ConsecutiveReadFailures++;
+            ReadFailed?.Invoke(this, new PollingFailure(group, ex, _now));
         }
     }
 }

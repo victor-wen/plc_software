@@ -12,13 +12,19 @@ namespace PlcSoftware.Core.Tests.Services;
 /// tests, so virtual time is advanced deterministically by releasing the fake delay).
 ///
 /// Verified rules:
-///   - each group fires at its own interval (fast 250 ms / process 500 ms / io 500 ms) under virtual
-///     time, and cancellation joins the loop and stops every group;
+///   - each group fires at its own interval (fast 250 ms / process 500 ms / io X / io Y 500 ms) under
+///     virtual time, and cancellation joins the loop and stops every group. The I/O diagnostic group
+///     reads both the X-input and Y-coil areas (two separate Modbus requests);
 ///   - a slow request never causes re-entrancy: the next tick of a group waits until the previous
 ///     execution of that group completes (no overlapping reads of one group);
 ///   - a write submitted by an external caller through the same client is not starved: writing into
 ///     the shared FIFO/single-flight bus behind an in-flight read completes before the group's next
-///     read (polling yields its scheduling slot between group cycles).
+///     read (polling yields its scheduling slot between group cycles);
+///   - a failed (non-cancellation) read is a per-cycle skip observed through <see cref="PollingFailure"/>
+///     / <see cref="PollingService.ReadFailed"/>: the loop survives, the failure counter advances and
+///     the next tick still fires at the group's interval (no tight retry spin);
+///   - an <see cref="OperationCanceledException"/> — whether from the service's own token or a foreign
+///     token cancelling an in-flight read — joins the loop cleanly without faulting <c>RunAsync</c>.
 /// </summary>
 public class PollingServiceTests
 {
@@ -40,9 +46,10 @@ public class PollingServiceTests
     }
 
     /// <summary>
-    /// The default plan encodes the three design groups at their nominal intervals: the fast group
-    /// every 250 ms, the process and I/O groups every 500 ms. Under virtual time (instant reads) the
-    /// service fires them at those absolute offsets, and cancelling the token stops all of them.
+    /// The default plan encodes the design groups at their nominal intervals: the fast group every
+    /// 250 ms, the process and both I/O area groups (X inputs and Y coils) every 500 ms. Under virtual
+    /// time (instant reads) the service fires them at those absolute offsets, and cancelling the token
+    /// stops all of them.
     /// </summary>
     [Fact]
     public async Task Groups_FireAtTheirFrequency_UnderVirtualTime_AndCancellationStopsAll()
@@ -56,31 +63,35 @@ public class PollingServiceTests
         var run = service.RunAsync(cts.Token);
         try
         {
-            // t = 0: all three groups fire immediately.
-            await WaitFor(() => results.Count == 3, "all groups did not fire at t=0.");
+            // t = 0: fast, process, Io (X inputs) and Io.Y (Y coils) all fire immediately.
+            await WaitFor(() => results.Count == 4, "all groups did not fire at t=0.");
             AssertCount(results, "Fast", 1);
             AssertCount(results, "Process", 1);
             AssertCount(results, "Io", 1);
+            AssertCount(results, "Io.Y", 1);
             Assert.All(results, r => Assert.Equal(TimeSpan.Zero, r.Timestamp));
 
             // t = 250: only the fast group fires.
             manual.ReleaseOne();
-            await WaitFor(() => results.Count == 4, "fast group did not fire at t=250.");
+            await WaitFor(() => results.Count == 5, "fast group did not fire at t=250.");
             AssertCount(results, "Fast", 2);
             AssertCount(results, "Process", 1);
             AssertCount(results, "Io", 1);
+            AssertCount(results, "Io.Y", 1);
 
-            // t = 500: fast, process and I/O groups all fire.
+            // t = 500: fast, process and both I/O area groups all fire.
             manual.ReleaseOne();
-            await WaitFor(() => results.Count == 7, "groups did not fire at t=500.");
+            await WaitFor(() => results.Count == 9, "groups did not fire at t=500.");
             AssertCount(results, "Fast", 3);
             AssertCount(results, "Process", 2);
             AssertCount(results, "Io", 2);
+            AssertCount(results, "Io.Y", 2);
 
-            // Absolute offsets: Fast at 0/250/500, Process and Io at 0/500.
+            // Absolute offsets: Fast at 0/250/500, Process, Io and Io.Y at 0/500.
             AssertOffsets(results, "Fast", TimeSpan.Zero, FastInterval, TimeSpan.FromMilliseconds(500));
             AssertOffsets(results, "Process", TimeSpan.Zero, ProcessInterval);
             AssertOffsets(results, "Io", TimeSpan.Zero, ProcessInterval);
+            AssertOffsets(results, "Io.Y", TimeSpan.Zero, ProcessInterval);
 
             // Every scheduling gap is the fast group's 250 ms (it drives the schedule under virtual time).
             Assert.NotEmpty(manual.Requests);
@@ -214,6 +225,133 @@ public class PollingServiceTests
         Assert.Throws<ArgumentException>(() => new PollingPlan(Array.Empty<PollingGroup>()));
     }
 
+    /// <summary>
+    /// Design §5.1 requires the I/O diagnostic group to read the X/Y regions per the point map, so the
+    /// default plan must carry two area entries: the X inputs (FC02) and the Y coils (FC01) — each with
+    /// the offset ranges from <c>config/point-map.simulation.json</c>.
+    /// </summary>
+    [Fact]
+    public void DefaultPlan_IoGroup_CoversBothXInputsAndYCoils()
+    {
+        var groups = PollingPlan.Default().Groups;
+
+        var ioX = groups.Single(g => g.Name == "Io");
+        Assert.Equal(PollingArea.DiscreteInputs, ioX.Area);
+        Assert.Equal(0, ioX.StartAddress);   // X0 appears in the point map at protocol address 0.
+        Assert.Equal(19, ioX.Count);         // X0-X22 → protocol addresses 0-18.
+
+        var ioY = groups.Single(g => g.Name == "Io.Y");
+        Assert.Equal(PollingArea.Coils, ioY.Area);
+        Assert.Equal(0, ioY.StartAddress);   // Y0 appears in the point map at protocol address 0.
+        Assert.Equal(14, ioY.Count);         // Y0-Y15 → protocol addresses 0-13.
+    }
+
+    /// <summary>
+    /// A failed (non-cancellation) read is a per-cycle skip, never a loop fault. The failure is observed
+    /// through <see cref="PollingService.ReadFailed"/> / <see cref="PollingService.ConsecutiveReadFailures"/>
+    /// so the connection-health layer can apply §5.3's 3-consecutive-failure rule (the supervisor owns
+    /// offline detection). The loop survives, the next tick still fires at the group's interval, and the
+    /// service never busy-retries in a tight spin.
+    /// </summary>
+    [Fact]
+    public async Task FailedRead_DoesNotFaultLoop_NextTickAtInterval_NoTightSpin()
+    {
+        var client = new FailingClient();
+        var manual = new ManualDelay();
+        var service = new PollingService(Plan(FastInterval), client, manual);
+        var failures = new List<PollingFailure>();
+        service.ReadFailed += (_, f) =>
+        {
+            lock (failures)
+            {
+                failures.Add(f);
+            }
+        };
+
+        using var cts = new CancellationTokenSource();
+        var run = service.RunAsync(cts.Token);
+        try
+        {
+            // t = 0: the fast group is due, its read fails (non-cancellation). The loop survives and the
+            // failure is observed, carrying the group and the scheduled (virtual) timestamp.
+            await WaitFor(() => client.AttemptedReads == 1, "first read did not run.");
+            await WaitFor(() => failures.Count == 1, "read failure was not observed.");
+            Assert.Equal(1, service.ConsecutiveReadFailures);
+            Assert.Equal("Fast", LastFailure(failures).Group.Name);
+            Assert.Equal(TimeSpan.Zero, LastFailure(failures).Timestamp);
+
+            // No tight spin: after a failed cycle the service sleeps its full interval before retrying.
+            await WaitFor(() => manual.Requests.Count == 1, "service did not schedule its interval after the failure.");
+            Assert.Equal(FastInterval, manual.Requests[^1]);
+
+            // The next tick still fires at the interval; the failure is observed again and the loop lives.
+            manual.ReleaseOne();
+            await WaitFor(() => client.AttemptedReads == 2, "fast group's next tick did not run.");
+            await WaitFor(() => failures.Count == 2, "second read failure was not observed.");
+            Assert.Equal(2, service.ConsecutiveReadFailures);
+            Assert.Equal(FastInterval, manual.Requests[^1]);
+        }
+        finally
+        {
+            cts.Cancel();
+            await run;
+        }
+
+        Assert.True(run.IsCompleted);
+        Assert.False(run.IsFaulted); // a read failure never tears the loop down.
+    }
+
+    /// <summary>
+    /// The consecutive-failure counter resets on the next successful read, so the connection-health layer
+    /// observes a rolling streak rather than an absolute total.
+    /// </summary>
+    [Fact]
+    public async Task SuccessfulRead_ResetsConsecutiveFailureCounter()
+    {
+        var client = new FailingClient(failFirstOnly: true);
+        var manual = new ManualDelay();
+        var service = new PollingService(Plan(FastInterval), client, manual);
+
+        using var cts = new CancellationTokenSource();
+        var run = service.RunAsync(cts.Token);
+        try
+        {
+            await WaitFor(() => service.ConsecutiveReadFailures == 1, "first read did not fail.");
+            manual.ReleaseOne(); // the second tick succeeds.
+            await WaitFor(() => service.ConsecutiveReadFailures == 0, "counter did not reset after a success.");
+            Assert.Equal(2, client.AttemptedReads); // one failed + one successful read.
+        }
+        finally
+        {
+            cts.Cancel();
+            await run;
+        }
+    }
+
+    /// <summary>
+    /// An <see cref="OperationCanceledException"/> raised with a foreign token (e.g. the transport queue
+    /// cancelling an in-flight read on shutdown) must join the loop cleanly rather than escaping
+    /// <see cref="PollingService.RunAsync"/> and faulting the polling loop.
+    /// </summary>
+    [Fact]
+    public async Task ForeignTokenCancellation_JoinsLoopCleanly_DoesNotFault()
+    {
+        var client = new ForeignOceClient();
+        var manual = new ManualDelay();
+        var service = new PollingService(Plan(FastInterval), client, manual);
+
+        using var cts = new CancellationTokenSource();
+        var run = service.RunAsync(cts.Token);
+
+        // The read is cancelled with a foreign token, not the service's own token — the service must treat
+        // it as a loop end and join cleanly instead of surfacing the cancellation as a fault.
+        await run;
+
+        Assert.True(run.IsCompleted);
+        Assert.False(run.IsFaulted);
+        Assert.False(run.IsCanceled);
+    }
+
     private static PollingPlan Plan(TimeSpan interval)
         => new(new[] { new PollingGroup("Fast", interval, 1, 0, 11) });
 
@@ -248,6 +386,14 @@ public class PollingServiceTests
                 .OrderBy(t => t)
                 .ToArray();
             Assert.Equal(expected, timestamps);
+        }
+    }
+
+    private static PollingFailure LastFailure(List<PollingFailure> failures)
+    {
+        lock (failures)
+        {
+            return failures[^1];
         }
     }
 
@@ -453,5 +599,112 @@ public class PollingServiceTests
                 _maxActive = Math.Max(_maxActive, active);
             }
         }
+    }
+
+    /// <summary>
+    /// A client whose reads fail with a non-cancellation exception, optionally only on the first read.
+    /// Used to prove that a failed read is a per-cycle skip (the loop survives, the next tick fires at
+    /// the interval, and the failure is observed) and that the consecutive-failure counter resets on
+    /// the next success.
+    /// </summary>
+    private sealed class FailingClient : IModbusClient
+    {
+        private readonly bool _failFirstOnly;
+        private int _attempts;
+
+        public FailingClient(bool failFirstOnly = false)
+        {
+            _failFirstOnly = failFirstOnly;
+        }
+
+        public int AttemptedReads => Volatile.Read(ref _attempts);
+
+        private void Fail()
+        {
+            var attempt = Interlocked.Increment(ref _attempts);
+            if (!_failFirstOnly || attempt == 1)
+            {
+                throw new IOException("transport down");
+            }
+        }
+
+        public Task ConnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task DisconnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<bool[]> ReadCoilsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+        {
+            Fail();
+            return Task.FromResult(new bool[count]);
+        }
+
+        public Task<bool[]> ReadDiscreteInputsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+        {
+            Fail();
+            return Task.FromResult(new bool[count]);
+        }
+
+        public Task<ushort[]> ReadHoldingRegistersAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+        {
+            Fail();
+            return Task.FromResult(new ushort[count]);
+        }
+
+        public Task<ushort[]> ReadInputRegistersAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+        {
+            Fail();
+            return Task.FromResult(new ushort[count]);
+        }
+
+        public Task WriteSingleCoilAsync(byte slaveId, ushort address, bool value, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public Task WriteSingleRegisterAsync(byte slaveId, ushort address, ushort value, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// A client whose reads are cancelled with a <em>foreign</em> token (distinct from the token the
+    /// <see cref="PollingService"/> is running under), e.g. the transport queue cancelling an in-flight
+    /// request on shutdown. Used to prove that such a cancellation joins the loop cleanly instead of
+    /// faulting <c>RunAsync</c>.
+    /// </summary>
+    private sealed class ForeignOceClient : IModbusClient
+    {
+        private readonly CancellationTokenSource _foreign = new();
+
+        public ForeignOceClient()
+        {
+            _foreign.Cancel();
+        }
+
+        private Task<T> Fail<T>()
+            => throw new OperationCanceledException("foreign token cancelled the in-flight read", _foreign.Token);
+
+        public Task ConnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task DisconnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<bool[]> ReadCoilsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+            => Fail<bool[]>();
+
+        public Task<bool[]> ReadDiscreteInputsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+            => Fail<bool[]>();
+
+        public Task<ushort[]> ReadHoldingRegistersAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+            => Fail<ushort[]>();
+
+        public Task<ushort[]> ReadInputRegistersAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+            => Fail<ushort[]>();
+
+        public Task WriteSingleCoilAsync(byte slaveId, ushort address, bool value, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public Task WriteSingleRegisterAsync(byte slaveId, ushort address, ushort value, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }
