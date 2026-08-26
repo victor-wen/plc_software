@@ -133,8 +133,12 @@ public sealed class ConnectionSupervisor
                     if (!heartbeatLost)
                     {
                         // Exited because of cancellation (shutdown), not heartbeat loss. Tear the
-                        // link down before leaving the loop.
-                        await TryDisconnectAsync(cancellationToken);
+                        // link down before leaving the loop. Pass a live token here: the supervision
+                        // token is already cancelled, and a compliant transport cancels promptly when
+                        // its token is cancelled, so it would abort this disconnect immediately and
+                        // leave the link up. The call is still bounded by _disconnectTimeout inside
+                        // InvokeWithTimeoutAsync, so this cannot wait forever.
+                        await TryDisconnectAsync(CancellationToken.None);
                         break;
                     }
 

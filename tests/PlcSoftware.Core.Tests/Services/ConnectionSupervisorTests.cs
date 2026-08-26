@@ -332,6 +332,11 @@ public class ConnectionSupervisorTests
         await run;                       // graceful shutdown joins the loop
 
         Assert.Contains(conn.Calls, c => c == "Disconnect");
+        // The shutdown-path disconnect must use a live token, not the already-cancelled supervision
+        // token: a compliant transport aborts an invocation whose token is cancelled, which would
+        // leave the link up.
+        Assert.False(conn.DisconnectSawCancelledToken,
+            "shutdown disconnect must not observe a cancelled token.");
         Assert.Equal(ConnectionState.Disconnected, supervisor.CurrentState);
     }
 
@@ -541,6 +546,7 @@ public class ConnectionSupervisorTests
         private readonly Queue<bool> _connectOutcomes = new();
         private readonly Queue<bool> _probeOutcomes = new();
         private readonly Queue<Exception> _probeExceptions = new();
+        private bool _disconnectSawCancelledToken;
 
         /// <summary>Default connect outcome when no override is queued; <c>false</c> makes every connect fail.</summary>
         private readonly bool _connectSucceeds;
@@ -577,6 +583,18 @@ public class ConnectionSupervisorTests
                 lock (_sync)
                 {
                     return _calls.Count(c => c == "Probe");
+                }
+            }
+        }
+
+        /// <summary>True when <see cref="DisconnectAsync"/> observed an already-cancelled token.</summary>
+        public bool DisconnectSawCancelledToken
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _disconnectSawCancelledToken;
                 }
             }
         }
@@ -635,9 +653,11 @@ public class ConnectionSupervisorTests
         {
             lock (_sync)
             {
+                _disconnectSawCancelledToken |= cancellationToken.IsCancellationRequested;
                 _calls.Add("Disconnect");
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             return Task.CompletedTask;
         }
 
