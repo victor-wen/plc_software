@@ -89,6 +89,37 @@ public class OptionsValidationTests
     }
 
     [Fact]
+    public void SerialConnectionOptions_StopBitsNone_ProducesError()
+    {
+        // StopBits.None is not a real serial stop-bits setting; it must be rejected at load time
+        // instead of surfacing as an ArgumentException at SerialPort construction.
+        var options = new SerialConnectionOptions { StopBits = StopBits.None };
+
+        Assert.Contains("stopBits", string.Join(" ", options.Validate()), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData((Parity)99)]
+    [InlineData((Parity)7)]
+    public void SerialConnectionOptions_UndefinedParity_ProducesError(Parity parity)
+    {
+        var options = new SerialConnectionOptions { Parity = parity };
+
+        Assert.Contains("parity", string.Join(" ", options.Validate()), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData((StopBits)99)]
+    [InlineData((StopBits)7)]
+    [InlineData(StopBits.None)]
+    public void SerialConnectionOptions_UndefinedStopBits_ProducesError(StopBits stopBits)
+    {
+        var options = new SerialConnectionOptions { StopBits = stopBits };
+
+        Assert.Contains("stopBits", string.Join(" ", options.Validate()), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void PollingOptions_NonPositiveInterval_ProducesError()
     {
         var options = new PollingOptions { FastIntervalMs = 0 };

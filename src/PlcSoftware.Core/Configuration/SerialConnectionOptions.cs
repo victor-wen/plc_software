@@ -63,6 +63,19 @@ public sealed class SerialConnectionOptions
             errors.Add("dataBits must be one of 5, 6, 7 or 8.");
         }
 
+        // Reject undefined enum values and StopBits.None: None is not a real serial stop-bits
+        // setting, so it must surface here at load time rather than throwing from
+        // System.IO.Ports.SerialPort at construction.
+        if (Parity is not (Parity.None or Parity.Odd or Parity.Even or Parity.Mark or Parity.Space))
+        {
+            errors.Add("parity must be one of None, Odd, Even, Mark or Space.");
+        }
+
+        if (StopBits is not (StopBits.One or StopBits.Two or StopBits.OnePointFive))
+        {
+            errors.Add("stopBits must be one of One, Two or OnePointFive (None is not a valid value).");
+        }
+
         if (SlaveId < 1 || SlaveId > 247)
         {
             errors.Add("slaveId must be between 1 and 247 (Modbus RTU range).");

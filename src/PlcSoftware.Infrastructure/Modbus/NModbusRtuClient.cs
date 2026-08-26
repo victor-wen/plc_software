@@ -20,12 +20,20 @@ namespace PlcSoftware.Infrastructure.Modbus;
 /// rejected with <see cref="ArgumentOutOfRangeException"/>, so only 1-247 (the range the H3U and
 /// other RTU devices use) are accepted.
 ///
-/// Any request on a not-connected or disposed client is rejected. The client is not thread-safe.
+/// Any request on a not-connected or disposed client is rejected. Requests are serialised (a second
+/// concurrent request waits for the first to complete); connection lifecycle itself is not guarded
+/// against concurrent access.
 /// </summary>
 public sealed class NModbusRtuClient : IModbusClient
 {
+    private readonly SerialConnectionOptions _options;
     private readonly ISerialPortFactory _factory;
     private readonly IModbusFactory _modbusFactory;
+
+    // Serialises every request on the serial link (all串口请求必须串行 — all serial requests must be
+    // serial). Held across the whole request span (acquire after validation, release in finally) so a
+    // second concurrent request waits until the first completes. Cancellation while waiting is honoured.
+    private readonly SemaphoreSlim _requestLock = new(1, 1);
 
     private IStreamResource? _resource;
     private IModbusSerialMaster? _master;
@@ -47,6 +55,7 @@ public sealed class NModbusRtuClient : IModbusClient
             throw new ArgumentNullException(nameof(options));
         }
 
+        _options = options;
         _factory = factory ?? new SerialPortFactory(options);
         _modbusFactory = modbusFactory ?? new ModbusFactory();
     }
@@ -62,17 +71,35 @@ public sealed class NModbusRtuClient : IModbusClient
         }
 
         var resource = _factory.Create();
+        IModbusRtuTransport? transport = null;
         try
         {
-            var transport = _modbusFactory.CreateRtuTransport(resource);
+            transport = _modbusFactory.CreateRtuTransport(resource);
             var master = _modbusFactory.CreateMaster(transport);
+
+            // Map the configured retry count onto the NModbus transport (default NModbus retries
+            // would otherwise silently ignore the option).
+            master.Transport.Retries = _options.Retries;
+
             _resource = resource;
             _master = master;
             _connected = true;
         }
         catch
         {
-            resource.Dispose();
+            // CreateMaster failing after CreateRtuTransport succeeded leaves a half-created
+            // transport (and the resource it owns) that must be released. Disposing the transport
+            // cascades to the stream resource; if the transport never materialised, dispose the
+            // resource directly.
+            if (transport is null)
+            {
+                resource.Dispose();
+            }
+            else
+            {
+                transport.Dispose();
+            }
+
             throw;
         }
 
@@ -87,56 +114,104 @@ public sealed class NModbusRtuClient : IModbusClient
         return Task.CompletedTask;
     }
 
-    public Task<bool[]> ReadCoilsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+    public async Task<bool[]> ReadCoilsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureConnected();
         ValidateSlaveId(slaveId);
         ModbusReadRange.Validate(address, count, ModbusLimits.MaxBitsPerRead);
-        return _master!.ReadCoilsAsync(slaveId, address, count);
+        await _requestLock.WaitAsync(cancellationToken);
+        try
+        {
+            return await _master!.ReadCoilsAsync(slaveId, address, count);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
     }
 
-    public Task<bool[]> ReadDiscreteInputsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+    public async Task<bool[]> ReadDiscreteInputsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureConnected();
         ValidateSlaveId(slaveId);
         ModbusReadRange.Validate(address, count, ModbusLimits.MaxBitsPerRead);
-        return _master!.ReadInputsAsync(slaveId, address, count);
+        await _requestLock.WaitAsync(cancellationToken);
+        try
+        {
+            return await _master!.ReadInputsAsync(slaveId, address, count);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
     }
 
-    public Task<ushort[]> ReadHoldingRegistersAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+    public async Task<ushort[]> ReadHoldingRegistersAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureConnected();
         ValidateSlaveId(slaveId);
         ModbusReadRange.Validate(address, count, ModbusLimits.MaxRegistersPerRead);
-        return _master!.ReadHoldingRegistersAsync(slaveId, address, count);
+        await _requestLock.WaitAsync(cancellationToken);
+        try
+        {
+            return await _master!.ReadHoldingRegistersAsync(slaveId, address, count);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
     }
 
-    public Task<ushort[]> ReadInputRegistersAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+    public async Task<ushort[]> ReadInputRegistersAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureConnected();
         ValidateSlaveId(slaveId);
         ModbusReadRange.Validate(address, count, ModbusLimits.MaxRegistersPerRead);
-        return _master!.ReadInputRegistersAsync(slaveId, address, count);
+        await _requestLock.WaitAsync(cancellationToken);
+        try
+        {
+            return await _master!.ReadInputRegistersAsync(slaveId, address, count);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
     }
 
-    public Task WriteSingleCoilAsync(byte slaveId, ushort address, bool value, CancellationToken cancellationToken)
+    public async Task WriteSingleCoilAsync(byte slaveId, ushort address, bool value, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureConnected();
         ValidateSlaveId(slaveId);
-        return _master!.WriteSingleCoilAsync(slaveId, address, value);
+        await _requestLock.WaitAsync(cancellationToken);
+        try
+        {
+            await _master!.WriteSingleCoilAsync(slaveId, address, value);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
     }
 
-    public Task WriteSingleRegisterAsync(byte slaveId, ushort address, ushort value, CancellationToken cancellationToken)
+    public async Task WriteSingleRegisterAsync(byte slaveId, ushort address, ushort value, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureConnected();
         ValidateSlaveId(slaveId);
-        return _master!.WriteSingleRegisterAsync(slaveId, address, value);
+        await _requestLock.WaitAsync(cancellationToken);
+        try
+        {
+            await _master!.WriteSingleRegisterAsync(slaveId, address, value);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
     }
 
     public ValueTask DisposeAsync()
