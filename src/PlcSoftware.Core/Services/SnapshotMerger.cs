@@ -30,6 +30,12 @@ public sealed class SnapshotMerger
     /// <summary>
     /// Merges <paramref name="fast"/> and <paramref name="process"/> into one fresh snapshot and
     /// publishes it once. Returns the published snapshot.
+    ///
+    /// <para><b>Single-writer contract.</b> The <see cref="SnapshotMerger"/> is the sole publisher on
+    /// its <see cref="IDeviceStateStore"/>: a single coordinator loop owns <see cref="Publish"/> and
+    /// therefore serializes every cycle. (The store raises <see cref="IDeviceStateStore.SnapshotChanged"/>
+    /// outside its internal lock, so this single-writer guarantee — one loop, never concurrent callers —
+    /// is what keeps the event order aligned with <see cref="IDeviceStateStore.Current"/>.)</para>
     /// </summary>
     public DeviceSnapshot Publish(
         IReadOnlyDictionary<string, object?> fast,

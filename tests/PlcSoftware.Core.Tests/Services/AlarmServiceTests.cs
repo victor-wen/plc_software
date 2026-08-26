@@ -11,7 +11,8 @@ namespace PlcSoftware.Core.Tests.Services;
 ///   - the same D110 value observed repeatedly must NOT raise a duplicate <see cref="AlarmService.AlarmStarted"/>;
 ///   - D110 returning to 0 closes the active alarm (raises <see cref="AlarmService.AlarmRecovered"/>);
 ///   - a change from one fault code to another recovers the old alarm and starts the new one;
-///   - an undefined code (outside K1-K7) raises no alarm.
+///   - an undefined non-zero code (outside K1-K7) is a garbage sample: it raises no alarm, does NOT
+///     clear the active alarm, and leaves the current state untouched; only a return to 0 closes it.
 /// </summary>
 public class AlarmServiceTests
 {
@@ -82,14 +83,14 @@ public class AlarmServiceTests
     }
 
     [Fact]
-    public void Observe_FaultThenUndefinedCode_ClosesActiveAlarm_RaisesNoNewAlarm()
+    public void Observe_FaultThenUndefinedCode_KeepsActiveAlarm_RaisesNoRecovery()
     {
-        _service.Observe(3);  // started (3).
-        _service.Observe(99); // undefined → closes the active alarm, no new alarm.
+        _service.Observe(3);  // started (3) — real safety alarm.
+        _service.Observe(99); // undefined non-zero → a garbage sample: KEEP the active alarm.
 
-        Assert.Equal(3, Assert.Single(_recovered).Code);
-        Assert.Single(_started);
-        Assert.Equal(0, _service.ActiveCode);
+        Assert.Empty(_recovered);          // no recovery event.
+        Assert.Single(_started);           // still just the original start.
+        Assert.Equal(3, _service.ActiveCode); // state unchanged.
     }
 
     private static IReadOnlyList<FaultDefinition> Faults() =>

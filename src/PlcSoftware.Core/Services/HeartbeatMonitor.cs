@@ -44,11 +44,15 @@ public sealed class HeartbeatMonitor
     private DateTime? _lastChangedAt;
 
     /// <summary>Builds the monitor. <paramref name="now"/> defaults to <see cref="DateTime.UtcNow"/> and
-    /// the timeout to 3 seconds.</summary>
+    /// the timeout to 3 seconds. The timeout must be positive.</summary>
     public HeartbeatMonitor(Func<DateTime>? now = null, TimeSpan? timeout = null)
     {
         _now = now ?? (() => DateTime.UtcNow);
         _timeout = timeout ?? TimeSpan.FromSeconds(3);
+        if (_timeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), _timeout, "must be positive.");
+        }
     }
 
     /// <summary>The current heartbeat status. Begins as <see cref="HeartbeatStatus.Unknown"/>.</summary>

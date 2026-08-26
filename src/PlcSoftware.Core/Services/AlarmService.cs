@@ -14,8 +14,10 @@ using PlcSoftware.Core.Models;
 /// <see cref="AlarmRecovered"/> once) and leaves the service with no active alarm.</para>
 ///
 /// <para><b>Unknown codes.</b> Only codes present in the supplied <see cref="FaultDefinition"/> list
-/// (K1-K7) are treated as alarms. An undefined code closes the active alarm but raises no new one, and
-/// leaves the service with no active alarm.</para>
+/// (K1-K7) are treated as alarms. An undefined non-zero code is a garbage sample: it raises
+/// <strong>no</strong> event and leaves the current state untouched (the active alarm, if any, stays
+/// active). Only a return to 0 closes the active alarm, so a single stale/garbage sample can never
+/// clear a real safety alarm and then re-raise it on the next good sample (churn).</para>
 /// </summary>
 public sealed class AlarmService
 {
@@ -44,8 +46,8 @@ public sealed class AlarmService
 
     /// <summary>
     /// Feeds one D110 fault-code observation. Repeated identical values are ignored; a change of code
-    /// recovers the previous alarm and starts the new one; a code of 0 (or an undefined code) closes the
-    /// active alarm.
+    /// recovers the previous alarm and starts the new one; a return to 0 closes the active alarm. An
+    /// undefined non-zero code keeps the current state (no recovered event, no state change).
     /// </summary>
     public void Observe(int code)
     {
@@ -55,7 +57,15 @@ public sealed class AlarmService
             return;
         }
 
-        // A change of code closes the previously active alarm first.
+        // An undefined non-zero code is a garbage sample: treat it as no observation and keep the
+        // current state (no recovered event, no state change). Otherwise a single undefined sample would
+        // clear a real safety alarm and then re-raise it on the next good sample — churn.
+        if (code != 0 && !_defs.ContainsKey(code))
+        {
+            return;
+        }
+
+        // A change of code closes the previously active alarm first (code == 0 or a known fault).
         if (_defs.TryGetValue(_activeCode, out var previous))
         {
             AlarmRecovered?.Invoke(previous);
@@ -68,7 +78,7 @@ public sealed class AlarmService
         }
         else
         {
-            // code == 0 (no fault) or an undefined code: no active alarm.
+            // code == 0 (no fault): no active alarm.
             _activeCode = 0;
         }
     }

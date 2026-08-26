@@ -14,6 +14,7 @@ namespace PlcSoftware.Core.Tests.Services;
 ///   - a later change (a different value) resumes <see cref="HeartbeatStatus.Online"/>.
 ///
 /// Time is injected as a <see cref="Func{TResult}"/> clock so no real wall-clock time is used in tests.
+/// The constructor rejects a non-positive timeout (mirroring <see cref="ConnectionSupervisor"/>).
 /// </summary>
 public class HeartbeatMonitorTests
 {
@@ -25,6 +26,15 @@ public class HeartbeatMonitorTests
     public HeartbeatMonitorTests()
     {
         _monitor = new HeartbeatMonitor(() => _clock.Now);
+    }
+
+    [Fact]
+    public void Constructor_NonPositiveTimeout_ThrowsArgumentOutOfRange()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new HeartbeatMonitor(() => DateTime.UtcNow, TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new HeartbeatMonitor(() => DateTime.UtcNow, TimeSpan.FromMilliseconds(-1)));
     }
 
     [Fact]
