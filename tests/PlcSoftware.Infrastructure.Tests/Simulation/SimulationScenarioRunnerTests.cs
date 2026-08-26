@@ -16,6 +16,11 @@ public class SimulationScenarioRunnerTests
     private static async Task AssertStepAsync(InMemoryModbusClient client, ushort expected)
     {
         Assert.Equal(expected, await ReadHoldingRegisterAsync(client, SimulationPoints.StepRegister));
+        // D102 is the packed register mirroring M200-M215 (bit i = M(200+i); M200 = bit0). The
+        // scenario emits the current step as the single set bit.
+        Assert.Equal(
+            (ushort)(1 << expected),
+            await ReadHoldingRegisterAsync(client, SimulationPoints.StepBitsRegister));
         for (ushort i = 0; i < SimulationPoints.StepFlagCount; i++)
         {
             var coil = (await client.ReadCoilsAsync(
@@ -268,4 +273,39 @@ public class SimulationScenarioRunnerTests
     [Fact]
     public void Scenario_NullEvents_ThrowsArgumentNull()
         => Assert.Throws<ArgumentNullException>(() => new SimulationScenario(null!));
+
+    // --- Review fixes: unknown event default, null entries, negative At, heartbeat init-bypass -----
+
+    [Fact]
+    public void Apply_UnknownEventType_ThrowsInvalidOperation_NamingTheType()
+    {
+        var client = new InMemoryModbusClient();
+        var scenario = new SimulationScenario(new SimulationEvent[]
+        {
+            new UnknownSimulationEvent(TimeSpan.Zero),
+        });
+        var runner = new SimulationScenarioRunner(scenario, client);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => runner.Advance(TimeSpan.Zero));
+        Assert.Contains(nameof(UnknownSimulationEvent), ex.Message);
+    }
+
+    [Fact]
+    public void Scenario_NullEventEntry_ThrowsArgumentException()
+        => Assert.Throws<ArgumentException>(() => new SimulationScenario(new SimulationEvent[] { null! }));
+
+    [Fact]
+    public void Heartbeat_InitBypassZeroPeriod_ThrowsArgumentOutOfRange()
+        => Assert.Throws<ArgumentOutOfRangeException>(
+            () => new SimulationHeartbeat(SimulationPoints.Heartbeat, TimeSpan.FromSeconds(1))
+            {
+                Period = TimeSpan.Zero,
+            });
+
+    [Fact]
+    public void SetStepEvent_NegativeAt_ThrowsArgumentOutOfRange()
+        => Assert.Throws<ArgumentOutOfRangeException>(
+            () => new SetStepEvent(TimeSpan.FromMilliseconds(-1), 0));
+
+    private sealed record UnknownSimulationEvent(TimeSpan at) : SimulationEvent(at);
 }

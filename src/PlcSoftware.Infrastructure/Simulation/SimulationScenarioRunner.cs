@@ -1,3 +1,5 @@
+using PlcSoftware.Core.Abstractions;
+
 namespace PlcSoftware.Infrastructure.Simulation;
 
 /// <summary>
@@ -67,8 +69,13 @@ public sealed class SimulationScenarioRunner
     /// <summary>The current virtual time.</summary>
     public TimeSpan CurrentTime => _clock.Current;
 
-    /// <summary>The client the runner drives; also the vehicle for asserting/reading simulated state.</summary>
-    public InMemoryModbusClient Client => _client;
+    /// <summary>
+    /// The client the runner drives, exposed over the transport-neutral <see cref="IModbusClient"/>
+    /// surface only (Gate-2: the device is reachable solely through <c>IModbusClient</c>). Consumers
+    /// read simulated state via the read function codes; the concrete <see cref="InMemoryModbusClient"/>
+    /// (and its raw <see cref="InMemoryModbusClient.Memory"/>) is kept internal to the engine for seeding.
+    /// </summary>
+    public IModbusClient Client => _client;
 
     /// <summary>The clock (injectable for tests); advancing it is driven solely by <see cref="Advance"/>.</summary>
     public ISimulationClock Clock => _clock;
@@ -122,6 +129,9 @@ public sealed class SimulationScenarioRunner
             case ConnectEvent:
                 _client.ConnectAsync(CancellationToken.None).GetAwaiter().GetResult();
                 break;
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown simulation event type: {simulationEvent.GetType().Name}.");
         }
     }
 
@@ -133,6 +143,7 @@ public sealed class SimulationScenarioRunner
         }
 
         _client.Memory.WriteHoldingRegister(SimulationPoints.StepRegister, step);
+        _client.Memory.WriteHoldingRegister(SimulationPoints.StepBitsRegister, (ushort)(1 << step));
         for (ushort i = 0; i < SimulationPoints.StepFlagCount; i++)
         {
             _client.Memory.WriteCoil((ushort)(SimulationPoints.FirstStepFlag + i), i == step);

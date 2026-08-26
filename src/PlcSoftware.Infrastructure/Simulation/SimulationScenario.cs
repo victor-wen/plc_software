@@ -4,13 +4,17 @@ namespace PlcSoftware.Infrastructure.Simulation;
 /// The zero-based protocol addresses the simulated profile exposes for the supervisory-control data
 /// points the automatic flow and monitoring use. These match the <c>point-map.simulation.json</c>
 /// profile (M points are coils, D points are holding registers at their profile protocol addresses;
-/// M200-M205 are the per-step flags, D200 the current step number, D101 the heartbeat, D110 the fault
-/// code and D207/D208 the low/high production-counter words).
+/// M200-M205 are the per-step flags, D102 the packed M200-M215 bit-field register, D200 the current
+/// step number, D101 the heartbeat, D110 the fault code and D207/D208 the low/high production-counter
+/// words).
 /// </summary>
 public static class SimulationPoints
 {
     /// <summary>D101, the PLC heartbeat counter (increments every heartbeat period).</summary>
     public const ushort Heartbeat = 0x0001;
+
+    /// <summary>D102, the packed register mirroring M200-M215 (bit i = M(200+i); M200 = bit0).</summary>
+    public const ushort StepBitsRegister = 0x0002;
 
     /// <summary>D110, the fault code register, where 0 = no fault and 1..7 = K1..K7.</summary>
     public const ushort FaultCode = 0x000A;
@@ -50,9 +54,25 @@ public static class SimulationFaults
 /// <summary>
 /// A single scheduled event in a <see cref="SimulationScenario"/>. Every event carries the virtual
 /// time (<see cref="At"/>) at which the <see cref="SimulationScenarioRunner"/> applies it; applying an
-/// event is purely a function of that virtual time, never of a real wall clock.
+/// event is purely a function of that virtual time, never of a real wall clock. The virtual time cannot
+/// be negative — an event scheduled before the start of the run is invalid.
 /// </summary>
-public abstract record SimulationEvent(TimeSpan At);
+public abstract record SimulationEvent
+{
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="at"/> is negative.</exception>
+    protected SimulationEvent(TimeSpan at)
+    {
+        if (at < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(at), at, "Event time cannot be negative.");
+        }
+
+        At = at;
+    }
+
+    /// <summary>The virtual time at which the event is applied.</summary>
+    public TimeSpan At { get; init; }
+}
 
 /// <summary>Writes a single holding register (semantically FC06). Used e.g. for D110 / D207 / D208.</summary>
 public sealed record SetRegisterEvent(TimeSpan At, ushort Address, ushort Value) : SimulationEvent(At);
@@ -76,9 +96,12 @@ public sealed record ConnectEvent(TimeSpan At) : SimulationEvent(At);
 /// Configures a repeating heartbeat: the register at <paramref name="Address"/> (D101) is incremented
 /// once per whole <paramref name="Period"/> of elapsed virtual time. The first increment is at the end
 /// of the first full period. Increments are pure integer ticks of virtual time so they are deterministic.
+/// The period must be positive.
 /// </summary>
 public sealed record SimulationHeartbeat
 {
+    private readonly TimeSpan _period;
+
     public SimulationHeartbeat(ushort address, TimeSpan period)
     {
         if (period <= TimeSpan.Zero)
@@ -94,7 +117,20 @@ public sealed record SimulationHeartbeat
     public ushort Address { get; init; }
 
     /// <summary>Period between increments; one increment per whole elapsed period.</summary>
-    public TimeSpan Period { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The value is not positive.</exception>
+    public TimeSpan Period
+    {
+        get => _period;
+        init
+        {
+            if (value <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(Period), value, "Heartbeat period must be positive.");
+            }
+
+            _period = value;
+        }
+    }
 }
 
 /// <summary>
@@ -107,10 +143,16 @@ public sealed class SimulationScenario
 {
     /// <summary>Creates a scenario from an event schedule and an optional repeating heartbeat.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="events"/> is <c>null</c>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="events"/> contains a <c>null</c> entry.</exception>
     public SimulationScenario(IEnumerable<SimulationEvent> events, SimulationHeartbeat? heartbeat = null)
     {
         ArgumentNullException.ThrowIfNull(events);
         Events = events.ToList();
+        if (Events.Any(e => e is null))
+        {
+            throw new ArgumentException("Event list cannot contain null entries.", nameof(events));
+        }
+
         Heartbeat = heartbeat;
     }
 
