@@ -48,6 +48,21 @@ public sealed class SerialConnectionOptions
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
+        if (string.IsNullOrWhiteSpace(PortName))
+        {
+            errors.Add("portName must not be empty.");
+        }
+
+        if (BaudRate <= 0)
+        {
+            errors.Add("baudRate must be greater than zero.");
+        }
+
+        if (DataBits is not (5 or 6 or 7 or 8))
+        {
+            errors.Add("dataBits must be one of 5, 6, 7 or 8.");
+        }
+
         if (SlaveId < 1 || SlaveId > 247)
         {
             errors.Add("slaveId must be between 1 and 247 (Modbus RTU range).");
@@ -56,6 +71,11 @@ public sealed class SerialConnectionOptions
         if (TimeoutMs < 0)
         {
             errors.Add("timeout must be non-negative.");
+        }
+
+        if (Retries < 0)
+        {
+            errors.Add("retries must be non-negative.");
         }
 
         return errors;

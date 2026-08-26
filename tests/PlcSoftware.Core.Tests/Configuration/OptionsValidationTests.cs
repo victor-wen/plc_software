@@ -50,6 +50,44 @@ public class OptionsValidationTests
         Assert.Contains("timeout", string.Join(" ", options.Validate()), StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void SerialConnectionOptions_NonPositiveBaudRate_ProducesError(int baudRate)
+    {
+        var options = new SerialConnectionOptions { BaudRate = baudRate };
+
+        Assert.Contains("baud", string.Join(" ", options.Validate()), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(4)]
+    [InlineData(9)]
+    public void SerialConnectionOptions_InvalidDataBits_ProducesError(int dataBits)
+    {
+        var options = new SerialConnectionOptions { DataBits = dataBits };
+
+        Assert.Contains("dataBits", string.Join(" ", options.Validate()), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void SerialConnectionOptions_EmptyPortName_ProducesError(string portName)
+    {
+        var options = new SerialConnectionOptions { PortName = portName };
+
+        Assert.Contains("port", string.Join(" ", options.Validate()), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SerialConnectionOptions_NegativeRetries_ProducesError()
+    {
+        var options = new SerialConnectionOptions { Retries = -1 };
+
+        Assert.Contains("retries", string.Join(" ", options.Validate()), StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void PollingOptions_NonPositiveInterval_ProducesError()
     {
@@ -92,6 +130,18 @@ public class OptionsValidationTests
     {
         var parameter = new ParameterDefinition { Min = 10, Max = 5 };
 
+        Assert.Contains("max", string.Join(" ", parameter.Validate()), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ParameterDefinition_UnsetRange_ProducesError()
+    {
+        // A fresh definition leaves Min/Max unconfigured (null); this must not pass validation
+        // because "参数上下限未正确配置时禁止写入" (no writes when bounds are not configured).
+        var parameter = new ParameterDefinition();
+
+        Assert.NotEmpty(parameter.Validate());
+        Assert.Contains("min", string.Join(" ", parameter.Validate()), StringComparison.OrdinalIgnoreCase);
         Assert.Contains("max", string.Join(" ", parameter.Validate()), StringComparison.OrdinalIgnoreCase);
     }
 
