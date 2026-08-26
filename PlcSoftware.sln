@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{03D96A19-AC19-41DC-AC33-78E417B06D85}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlcSoftware.Core", "src\PlcSoftware.Core\PlcSoftware.Core.csproj", "{09A2DDBC-217D-40AD-AFB6-56F98532D3FB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlcSoftware.Infrastructure", "src\PlcSoftware.Infrastructure\PlcSoftware.Infrastructure.csproj", "{BC1061BE-16DA-46EA-BBD2-42AAD563EFA1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlcSoftware.App", "src\PlcSoftware.App\PlcSoftware.App.csproj", "{9FDE4B6A-2C3D-4E15-8B7A-5C11D2E8F6A4}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{DC7229E6-3972-4782-8438-31B208AD934F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlcSoftware.Core.Tests", "tests\PlcSoftware.Core.Tests\PlcSoftware.Core.Tests.csproj", "{921E55FB-2C33-41AF-9F0F-3CE7C6CB288C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlcSoftware.Infrastructure.Tests", "tests\PlcSoftware.Infrastructure.Tests\PlcSoftware.Infrastructure.Tests.csproj", "{9CBAF8FE-9506-45D4-A225-FA0D83FFD425}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlcSoftware.App.Tests", "tests\PlcSoftware.App.Tests\PlcSoftware.App.Tests.csproj", "{C08BCDAB-E67C-4756-9226-1A7DC7FD80E9}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{09A2DDBC-217D-40AD-AFB6-56F98532D3FB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{09A2DDBC-217D-40AD-AFB6-56F98532D3FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{09A2DDBC-217D-40AD-AFB6-56F98532D3FB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{09A2DDBC-217D-40AD-AFB6-56F98532D3FB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BC1061BE-16DA-46EA-BBD2-42AAD563EFA1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BC1061BE-16DA-46EA-BBD2-42AAD563EFA1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BC1061BE-16DA-46EA-BBD2-42AAD563EFA1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BC1061BE-16DA-46EA-BBD2-42AAD563EFA1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9FDE4B6A-2C3D-4E15-8B7A-5C11D2E8F6A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9FDE4B6A-2C3D-4E15-8B7A-5C11D2E8F6A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9FDE4B6A-2C3D-4E15-8B7A-5C11D2E8F6A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9FDE4B6A-2C3D-4E15-8B7A-5C11D2E8F6A4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{921E55FB-2C33-41AF-9F0F-3CE7C6CB288C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{921E55FB-2C33-41AF-9F0F-3CE7C6CB288C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{921E55FB-2C33-41AF-9F0F-3CE7C6CB288C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{921E55FB-2C33-41AF-9F0F-3CE7C6CB288C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9CBAF8FE-9506-45D4-A225-FA0D83FFD425}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9CBAF8FE-9506-45D4-A225-FA0D83FFD425}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9CBAF8FE-9506-45D4-A225-FA0D83FFD425}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9CBAF8FE-9506-45D4-A225-FA0D83FFD425}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C08BCDAB-E67C-4756-9226-1A7DC7FD80E9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C08BCDAB-E67C-4756-9226-1A7DC7FD80E9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C08BCDAB-E67C-4756-9226-1A7DC7FD80E9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C08BCDAB-E67C-4756-9226-1A7DC7FD80E9}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{09A2DDBC-217D-40AD-AFB6-56F98532D3FB} = {03D96A19-AC19-41DC-AC33-78E417B06D85}
+		{9FDE4B6A-2C3D-4E15-8B7A-5C11D2E8F6A4} = {03D96A19-AC19-41DC-AC33-78E417B06D85}
+		{BC1061BE-16DA-46EA-BBD2-42AAD563EFA1} = {03D96A19-AC19-41DC-AC33-78E417B06D85}
+		{921E55FB-2C33-41AF-9F0F-3CE7C6CB288C} = {DC7229E6-3972-4782-8438-31B208AD934F}
+		{9CBAF8FE-9506-45D4-A225-FA0D83FFD425} = {DC7229E6-3972-4782-8438-31B208AD934F}
+		{C08BCDAB-E67C-4756-9226-1A7DC7FD80E9} = {DC7229E6-3972-4782-8438-31B208AD934F}
+	EndGlobalSection
+EndGlobal
