@@ -1,0 +1,53 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Navigation bar: hosts the placeholder page-navigation buttons. -->
+    <Style x:Key="NavBarStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource NavBarBackgroundBrush}" />
+        <Setter Property="Padding" Value="8,4" />
+    </Style>
+
+    <Style x:Key="NavButtonStyle" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource InverseForegroundBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="Margin" Value="2,0" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+
+    <!-- Alarm banner (design §6.1): a single fault strip above the page host. -->
+    <Style x:Key="AlarmBannerStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource AlarmBannerBackgroundBrush}" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="BorderThickness" Value="0,1" />
+    </Style>
+
+    <!-- Page host: the content region later pages are navigated into. -->
+    <Style x:Key="PageHostStyle" TargetType="ContentControl">
+        <Setter Property="Background" Value="{StaticResource PageHostBackgroundBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    </Style>
+
+    <!-- Global status bar (design §6.1). -->
+    <Style x:Key="StatusBarStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource StatusBarBackgroundBrush}" />
+        <Setter Property="Padding" Value="12,6" />
+    </Style>
+
+    <Style x:Key="StatusTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource InverseForegroundBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="StatusLabelStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource MutedForegroundBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Margin" Value="12,0,4,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+</ResourceDictionary>

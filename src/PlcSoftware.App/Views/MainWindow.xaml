@@ -1,0 +1,71 @@
+<Window x:Class="PlcSoftware.App.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PLC 上位机监控系统"
+        MinWidth="1280"
+        MinHeight="720"
+        WindowState="Maximized"
+        WindowStartupLocation="CenterScreen">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Navigation bar (placeholder for later page navigation). -->
+        <Border Grid.Row="0" Style="{StaticResource NavBarStyle}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="PLC 上位机监控系统"
+                           Style="{StaticResource StatusTextStyle}"
+                           FontWeight="SemiBold"
+                           Margin="8,0,16,0" />
+                <Button Content="总览" Style="{StaticResource NavButtonStyle}" />
+                <Button Content="操作" Style="{StaticResource NavButtonStyle}" />
+                <Button Content="手动" Style="{StaticResource NavButtonStyle}" />
+                <Button Content="参数" Style="{StaticResource NavButtonStyle}" />
+                <Button Content="I/O 诊断" Style="{StaticResource NavButtonStyle}" />
+                <Button Content="报警与历史" Style="{StaticResource NavButtonStyle}" />
+            </StackPanel>
+        </Border>
+
+        <!-- Alarm banner skeleton; hidden unless a fault is active. -->
+        <Border Grid.Row="1"
+                Style="{StaticResource AlarmBannerStyle}"
+                Visibility="{Binding HasFault, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="故障："
+                           Foreground="{StaticResource InverseForegroundBrush}"
+                           FontWeight="Bold"
+                           FontSize="14" />
+                <TextBlock Text="{Binding FaultText}"
+                           Foreground="{StaticResource InverseForegroundBrush}"
+                           FontSize="14" />
+            </StackPanel>
+        </Border>
+
+        <!-- Page host: later pages are navigated into this content region. -->
+        <ContentControl x:Name="PageHost"
+                        Grid.Row="2"
+                        Style="{StaticResource PageHostStyle}" />
+
+        <!-- Global status bar (design §6.1). -->
+        <Border Grid.Row="3" Style="{StaticResource StatusBarStyle}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="串口" Style="{StaticResource StatusLabelStyle}" />
+                <TextBlock Text="{Binding ConnectionStatusText}" Style="{StaticResource StatusTextStyle}" />
+                <TextBlock Text="心跳" Style="{StaticResource StatusLabelStyle}" />
+                <TextBlock Text="{Binding HeartbeatText}" Style="{StaticResource StatusTextStyle}" />
+                <TextBlock Text="模式" Style="{StaticResource StatusLabelStyle}" />
+                <TextBlock Text="{Binding ModeText}" Style="{StaticResource StatusTextStyle}" />
+                <TextBlock Text="运行" Style="{StaticResource StatusLabelStyle}" />
+                <TextBlock Text="{Binding RunText}" Style="{StaticResource StatusTextStyle}" />
+                <TextBlock Text="屏蔽" Style="{StaticResource StatusLabelStyle}" />
+                <TextBlock Text="{Binding MaskText}" Style="{StaticResource StatusTextStyle}" />
+                <TextBlock Text="当前时间" Style="{StaticResource StatusLabelStyle}" />
+                <TextBlock x:Name="ClockText" Style="{StaticResource StatusTextStyle}" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
