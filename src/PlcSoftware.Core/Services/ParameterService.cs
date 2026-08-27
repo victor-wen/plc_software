@@ -170,6 +170,13 @@ public sealed class ParameterService
     private async Task<ushort> ReadBackAsync(ushort address, CancellationToken cancellationToken)
     {
         var registers = await _client.ReadHoldingRegistersAsync(_slaveId, address, count: 1, cancellationToken);
+        if (registers.Length == 0)
+        {
+            // A read-back that yields no register cannot confirm the write — report a dedicated
+            // unverifiable-outcome reason (design §5.3: 读回不一致/不完整不报告成功).
+            throw new InvalidOperationException("read-back returned an empty register array.");
+        }
+
         return registers[0];
     }
 }

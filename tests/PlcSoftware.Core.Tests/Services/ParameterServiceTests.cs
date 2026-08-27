@@ -37,6 +37,20 @@ public class ParameterServiceTests
         Assert.Empty(client.Writes); // rejected before any write is attempted.
     }
 
+    [Fact]
+    public async Task Write_InvalidLimits_MinAboveMax_Rejected_NoWrite()
+    {
+        var client = new RecordingClient();
+        var wr = new ParameterService(client, new FakeGate(), Writable().With("D201", min: 500, max: 10));
+
+        // D201 has an invalid configuration (Min 500 > Max 10): the binding constraint forbids writing.
+        var result = await wr.WriteAsync("D201", 100, CancellationToken.None);
+
+        Assert.Equal(ParameterWriteStatus.Rejected, result.Status);
+        Assert.NotNull(result.Message);
+        Assert.Empty(client.Writes); // rejected before any write is attempted.
+    }
+
     [Theory]
     [InlineData(0, "below min")]
     [InlineData(1000, "above max")]
@@ -98,6 +112,38 @@ public class ParameterServiceTests
         Assert.Null(result.Message);
     }
 
+    [Theory]
+    [InlineData(10, "at min")]
+    [InlineData(500, "at max")]
+    public async Task Write_BoundaryValue_OnRangeEdges_Allowed_Success(int value, string _)
+    {
+        var client = new RecordingClient();
+        var wr = new ParameterService(client, new FakeGate(), Writable());
+
+        // D201 range is [10..500]; both edges are inclusive and must be writable (and read back identically).
+        var result = await wr.WriteAsync("D201", value, CancellationToken.None);
+
+        Assert.Equal(ParameterWriteStatus.Success, result.Status);
+        Assert.Equal(((ushort)101, (ushort)value), client.Writes.Single());
+        Assert.Equal(value, result.ReadBack);
+        Assert.Null(result.Message);
+    }
+
+    [Fact]
+    public async Task Write_MinEqualsMax_SinglePointRange_Allowed_Success()
+    {
+        var client = new RecordingClient();
+        var wr = new ParameterService(client, new FakeGate(), Writable().With("D201", min: 250, max: 250));
+
+        // Min == Max is a valid configuration: exactly one value is in range, and it is writable.
+        var result = await wr.WriteAsync("D201", 250, CancellationToken.None);
+
+        Assert.Equal(ParameterWriteStatus.Success, result.Status);
+        Assert.Equal(((ushort)101, (ushort)250), client.Writes.Single());
+        Assert.Equal(250, result.ReadBack);
+        Assert.Null(result.Message);
+    }
+
     [Fact]
     public async Task Write_ReadBackMismatch_ReportsFailureWithReason()
     {
@@ -126,6 +172,22 @@ public class ParameterServiceTests
         // outcome is unknown — never success, and no exception escapes to crash the caller.
         Assert.Equal(ParameterWriteStatus.Unknown, result.Status);
         Assert.NotNull(result.Message);
+        Assert.Equal((ushort)101, client.Writes.Single().Address);
+    }
+
+    [Fact]
+    public async Task Write_ReadBackEmptyArray_ReportsUnknownWithDedicatedMessage()
+    {
+        var client = new RecordingClient(emptyReadBack: true);
+        var wr = new ParameterService(client, new FakeGate(), Writable());
+
+        var result = await wr.WriteAsync("D201", 250, CancellationToken.None);
+
+        // The write landed but the read-back returned no register(s) — the outcome is unverifiable, so
+        // success is never reported. The reason must be the dedicated empty-read-back message (§5.3).
+        Assert.Equal(ParameterWriteStatus.Unknown, result.Status);
+        Assert.NotNull(result.Message);
+        Assert.Contains("empty", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal((ushort)101, client.Writes.Single().Address);
     }
 
@@ -159,13 +221,15 @@ public class ParameterServiceTests
         private readonly bool _throwOnWrite;
         private readonly bool _throwOnReadBack;
         private readonly ushort? _overrideReadBack;
+        private readonly bool _emptyReadBack;
         private readonly List<(ushort Address, ushort Value)> _writes = new();
 
-        public RecordingClient(bool throwOnWrite = false, bool throwOnReadBack = false, ushort? overrideReadBack = null)
+        public RecordingClient(bool throwOnWrite = false, bool throwOnReadBack = false, ushort? overrideReadBack = null, bool emptyReadBack = false)
         {
             _throwOnWrite = throwOnWrite;
             _throwOnReadBack = throwOnReadBack;
             _overrideReadBack = overrideReadBack;
+            _emptyReadBack = emptyReadBack;
         }
 
         public IReadOnlyList<(ushort Address, ushort Value)> Writes => _writes.ToArray();
@@ -194,6 +258,11 @@ public class ParameterServiceTests
             if (_overrideReadBack is not null)
             {
                 return Task.FromResult(new[] { _overrideReadBack.Value });
+            }
+
+            if (_emptyReadBack)
+            {
+                return Task.FromResult(Array.Empty<ushort>());
             }
 
             return Task.FromResult(new[] { _registers.TryGetValue(address, out var value) ? value : (ushort)0 });
