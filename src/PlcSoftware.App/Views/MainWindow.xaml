@@ -23,7 +23,7 @@
                            Margin="8,0,16,0" />
                 <Button Content="总览" Style="{StaticResource NavButtonStyle}" Click="OnOverviewClicked" />
                 <Button Content="操作" Style="{StaticResource NavButtonStyle}" Click="OnOperationClicked" />
-                <Button Content="手动" Style="{StaticResource NavButtonStyle}" />
+                <Button Content="手动" Style="{StaticResource NavButtonStyle}" Click="OnManualClicked" />
                 <Button Content="参数" Style="{StaticResource NavButtonStyle}" />
                 <Button Content="I/O 诊断" Style="{StaticResource NavButtonStyle}" />
                 <Button Content="报警与历史" Style="{StaticResource NavButtonStyle}" />

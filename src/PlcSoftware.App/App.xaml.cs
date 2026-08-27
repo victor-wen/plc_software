@@ -66,6 +66,12 @@ public partial class App : Application
         supervisor.StateChanged += state => RunOnUi(() => operation.ApplyConnectionState(state));
         store.SnapshotChanged += (_, snapshot) => RunOnUi(() => operation.ApplySnapshot(snapshot));
 
+        // Manual page (design §6.4): press-and-hold jogs through the same ICommandService / ICommandGate.
+        // It only consumes the snapshot + link state for the CanExecute pre-gate and the header text.
+        var manual = _host.Services.GetRequiredService<ManualViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => manual.ApplyConnectionState(state));
+        store.SnapshotChanged += (_, snapshot) => RunOnUi(() => manual.ApplySnapshot(snapshot));
+
         // Seed once after subscribing so an event raised before the subscription (or before the host start
         // finished) is not lost — the first StateChanged/SnapshotChanged/StatusChanged can fire while the
         // hosted loops are still starting, before the wiring above is in place. Latest state wins over any
@@ -78,6 +84,8 @@ public partial class App : Application
         overview.ApplySnapshot(store.Current);
         operation.ApplyConnectionState(supervisor.CurrentState);
         operation.ApplySnapshot(store.Current);
+        manual.ApplyConnectionState(supervisor.CurrentState);
+        manual.ApplySnapshot(store.Current);
 
         var window = _host.Services.GetRequiredService<MainWindow>();
         window.DataContext = viewModel;
@@ -176,6 +184,8 @@ public partial class App : Application
         services.AddSingleton<OverviewView>();
         services.AddSingleton<OperationViewModel>();
         services.AddSingleton<OperationBar>();
+        services.AddSingleton<ManualViewModel>();
+        services.AddSingleton<ManualView>();
         services.AddSingleton<MainWindow>();
     }
 

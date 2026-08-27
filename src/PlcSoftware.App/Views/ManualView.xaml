@@ -1,0 +1,152 @@
+<UserControl x:Class="PlcSoftware.App.Views.ManualView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:behaviors="clr-namespace:PlcSoftware.App.Behaviors">
+    <UserControl.Resources>
+        <!-- Manual page (design §6.4): the whole jog group greys out (opacity) when offline; the header
+             stays readable so the frozen connection text never greys. Colours carry text + icon redundancy. -->
+        <Style x:Key="ManualGroupStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="Opacity" Value="1" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsOnline}" Value="False">
+                    <Setter Property="Opacity" Value="0.4" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="4,12,4,4" />
+        </Style>
+
+        <!-- Press-and-hold jog buttons (design §6.4): 按住执行. The behavior provides the press/release;
+             IsEnabled is bound to IsJogEnabled so only manual-idle opens the jogs. -->
+        <Style x:Key="JogButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#EDEFF2" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryForegroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="20,10" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="MinWidth" Value="104" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.92" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Header: connection + jog availability; readable even offline. -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="4,0,4,8">
+                <TextBlock Text="手动"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource PrimaryForegroundBrush}" />
+                <TextBlock Text="连接："
+                           Style="{StaticResource SectionLabelStyle}"
+                           Margin="16,6,2,0" />
+                <TextBlock Text="{Binding ConnectionStatusText}" Margin="0,6,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource StatusAlertBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource StatusOkBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="手动点动："
+                           Style="{StaticResource SectionLabelStyle}"
+                           Margin="40,6,2,0" />
+                <TextBlock Text="{Binding JogAvailabilityText}" Margin="0,6,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource StatusAlertBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsManualIdle}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource StatusOkBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+
+            <!-- Result feedback (design §6.4). -->
+            <TextBlock Grid.Row="1"
+                       Text="{Binding CommandFeedbackText}"
+                       Style="{StaticResource SectionLabelStyle}"
+                       Margin="4,0,4,8"
+                       Foreground="{StaticResource StatusNeutralBrush}" />
+
+            <!-- Jog group: 调宽正转 (M106) / 调宽反转 (M107) / 皮带点动 (M108) / 挡停 (M109). Press-and-hold
+                 via the behavior; the Safety release on mouse-up / mouse-leave / focus loss / page switch /
+                 window close is routed to ManualViewModel.ReleaseAllJogsAsync (design §6.4). -->
+            <Border Grid.Row="2" Style="{StaticResource ManualGroupStyle}">
+                <StackPanel>
+                    <TextBlock Text="点动（按住执行，松开复位）" Style="{StaticResource SectionLabelStyle}" Margin="4,0,4,4" />
+                    <WrapPanel Orientation="Horizontal">
+                        <Button Content="调宽+"
+                                Style="{StaticResource JogButtonStyle}"
+                                IsEnabled="{Binding IsJogEnabled}"
+                                behaviors:PressAndHoldBehavior.CommandTarget="ManualWidthPlus" />
+                        <Button Content="调宽-"
+                                Style="{StaticResource JogButtonStyle}"
+                                IsEnabled="{Binding IsJogEnabled}"
+                                behaviors:PressAndHoldBehavior.CommandTarget="ManualWidthMinus" />
+                        <Button Content="皮带点动"
+                                Style="{StaticResource JogButtonStyle}"
+                                IsEnabled="{Binding IsJogEnabled}"
+                                behaviors:PressAndHoldBehavior.CommandTarget="ManualBeltJog" />
+                        <Button Content="挡停"
+                                Style="{StaticResource JogButtonStyle}"
+                                IsEnabled="{Binding IsJogEnabled}"
+                                behaviors:PressAndHoldBehavior.CommandTarget="ManualStopper" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>
