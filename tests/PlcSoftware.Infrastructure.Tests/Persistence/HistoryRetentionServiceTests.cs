@@ -100,13 +100,13 @@ public class HistoryRetentionServiceTests : IDisposable
     [Fact]
     public void Cleanup_BoundaryRowExactlyAtCutoff_IsRetained()
     {
-        // A zero-length retention puts the cut-off at "now", so a row exactly at the boundary (1s in the
-        // future vs 1s in the past) classifies deterministically under the strict `<` comparison without
-        // relying on clock drift.
+        // A zero-length retention puts the cut-off at "now", so a row at the boundary classifies
+        // deterministically under the strict `<` comparison. Wide ±60s margins ensure slow CI clock
+        // drift cannot overtake the "future" row while seeding.
         var now = DateTime.UtcNow;
         var production = new ProductionRepository(_db);
-        production.AppendProduction(1, now.AddSeconds(-1));
-        production.AppendProduction(2, now.AddSeconds(1));
+        production.AppendProduction(1, now.AddSeconds(-60));
+        production.AppendProduction(2, now.AddSeconds(60));
 
         var service = new HistoryRetentionService(_db, TimeSpan.FromDays(0));
         var (_, _, _) = service.Cleanup();
