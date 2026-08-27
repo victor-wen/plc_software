@@ -96,8 +96,8 @@ public class DashboardViewModelTests
         var tile = vm.Tiles[3]; // note: 2x2.
 
         vm.Resize(tile, +1, +1);
-        Assert.Equal(3, tile.Cols);
-        Assert.Equal(3, tile.Rows);
+        Assert.Equal(3, tile.Cols); // 2 + 1.
+        Assert.Equal(2, tile.Rows); // note is 1 row; 1 + 1.
 
         vm.Resize(tile, -10, -10);
         Assert.Equal(1, tile.Cols);
