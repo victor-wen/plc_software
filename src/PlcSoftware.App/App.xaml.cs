@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -240,6 +241,7 @@ public partial class App : Application
         services.AddSingleton(sp =>
         {
             var dbPath = Path.Combine(AppContext.BaseDirectory, "data", "history.db");
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dbPath))!);
             var db = new PlcSoftware.Infrastructure.Persistence.SqliteDatabase(dbPath);
             db.EnsureSchema();
             var alarms = new PlcSoftware.Infrastructure.Persistence.AlarmRepository(db);
@@ -263,7 +265,19 @@ public partial class App : Application
                         Description: r["target"]?.ToString() ?? "",
                         Value: r["value_text"]?.ToString()))
                     .ToList(),
-                saveFile: null);
+                saveFile: (fileName, content) =>
+                {
+                    var dialog = new Microsoft.Win32.SaveFileDialog
+                    {
+                        FileName = fileName,
+                        Filter = "CSV 文件 (*.csv)|*.csv",
+                    };
+                    if (dialog.ShowDialog() != true)
+                    {
+                        return;
+                    }
+                    File.WriteAllText(dialog.FileName, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+                });
         });
         services.AddSingleton<HistoryView>();
 
