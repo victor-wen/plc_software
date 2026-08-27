@@ -86,7 +86,13 @@
 
             <!-- Data region: greys out (opacity) when offline. -->
             <StackPanel Grid.Row="1" Style="{StaticResource DataSectionStyle}">
-                <TextBlock Text="流程步骤" Style="{StaticResource SectionLabelStyle}" />
+                <!-- Raw D200 step code surfaced next to the highlight tiles so a divergence between the
+                     process-group step number and the fast-group live M200-M205 flag stays visible. -->
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="流程步骤" Style="{StaticResource SectionLabelStyle}" />
+                    <TextBlock Text="D200：" Style="{StaticResource CardTitleStyle}" Margin="12,12,0,0" />
+                    <TextBlock Text="{Binding StepNumber}" Style="{StaticResource CardTitleStyle}" Margin="2,12,0,0" />
+                </StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <Border>
                         <Border.Style>

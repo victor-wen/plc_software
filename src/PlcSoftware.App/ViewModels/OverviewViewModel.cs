@@ -94,9 +94,13 @@ public sealed partial class OverviewViewModel : ObservableObject
         _ => "离线",
     };
 
-    /// <summary>The formatted last-update timestamp in local time, or 无数据 before the first snapshot.</summary>
+    /// <summary>The formatted last-update timestamp in local time, or 无数据 before the first real snapshot.
+    /// A stored <see cref="DateTime.MinValue"/> (the seeded empty-store snapshot timestamp) is treated as
+    /// no data so the app start never renders "0001-01-01 00:00:00".</summary>
     public string LastUpdateText =>
-        LastUpdateTime is DateTime time ? time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "无数据";
+        LastUpdateTime is DateTime time && time != DateTime.MinValue
+            ? time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+            : "无数据";
 
     /// <summary>True once at least one snapshot has been applied.</summary>
     public bool HasData => LastUpdateTime.HasValue;
@@ -183,11 +187,15 @@ public sealed partial class OverviewViewModel : ObservableObject
 
         var values = snapshot.Values;
 
-        LastUpdateTime = snapshot.Timestamp;
+        // A seeded/empty store snapshot carries DateTime.MinValue (DateTime default). That is not a real
+        // snapshot yet, so surface 无数据 (LastUpdateTime = null) instead of "0001-01-01 00:00:00".
+        LastUpdateTime = snapshot.Timestamp == DateTime.MinValue ? null : snapshot.Timestamp;
 
         StepNumber = ReadInt(values, "D200") ?? 0;
         ActiveStep = ComputeActiveStep(values, StepNumber);
 
+        // 待联调：传感器位 (M313 光栅 / M314 前门 / M315 后门 / M316 气压) 与 挡停 (M303 原位 / M304 工作位)
+        // 的布尔极性是对点表继电器名的解释 (design §4.6)，PLC 镜像极性未在点表明确，需设备到位后联调确认。
         LightCurtain = ReadBool(values, "M313");
         FrontDoor = ReadBool(values, "M314");
         RearDoor = ReadBool(values, "M315");
@@ -203,10 +211,18 @@ public sealed partial class OverviewViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Resolves the active step from the single-hot M200-M205 flags. A clean single-hot flag wins. When
-    /// no flag is live but D200 names a valid step (0..5), D200 is trusted (the decoder can emit D200
-    /// before the flag map in a partial read). More than one live flag is a corrupt/racing snapshot, so
-    /// the result is null rather than arbitrarily picking one.
+    /// Resolves the active step from the single-hot M200-M205 flags. Precedence:
+    /// <list type="number">
+    /// <item>A clean single live flag wins the highlight — the fast group (D100 block) is polled fresher
+    /// than the process group, so when a flag disagrees with D200 the live flag reflects the newest
+    /// state (design §6.2).</item>
+    /// <item>When no flag is live but D200 names a valid step (0..5), D200 is trusted (the decoder can
+    /// emit D200 before the flag map in a partial read).</item>
+    /// <item>More than one live flag is a corrupt/racing snapshot, so the result is null rather than
+    /// arbitrarily picking one.</item>
+    /// </list>
+    /// <see cref="OverviewViewModel.StepNumber"/> always carries the raw D200 so a divergence between the
+    /// two sources stays visible to the operator.
     /// </summary>
     private static int? ComputeActiveStep(IReadOnlyDictionary<string, object?> values, int stepNumber)
     {

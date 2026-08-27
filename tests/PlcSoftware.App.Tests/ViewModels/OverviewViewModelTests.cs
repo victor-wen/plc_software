@@ -113,6 +113,25 @@ public class OverviewViewModelTests
         Assert.All(Highlights(vm), h => Assert.False(h));
     }
 
+    [Fact]
+    public void Single_live_flag_wins_over_disagreeing_d200()
+    {
+        var vm = new OverviewViewModel();
+
+        // D200 says step 1 but only M205 is live: the single live flag (fast group, polled fresher than
+        // the process group) wins the highlight, while StepNumber still surfaces the raw D200 so the
+        // divergence between the two is visible to the operator.
+        vm.ApplySnapshot(new DeviceSnapshot(
+            Snap(("D200", (ushort)1), ("M205", true)),
+            DateTime.UtcNow));
+
+        Assert.Equal(1, vm.StepNumber);
+        Assert.Equal(5, vm.ActiveStep);
+        Assert.Equal("放行", vm.StepName);
+        Assert.True(vm.IsStep5);
+        Assert.False(vm.IsStep1);
+    }
+
     // --- Offline: last-update time preserved, read-only displays grey out ---
 
     [Fact]
@@ -160,6 +179,20 @@ public class OverviewViewModelTests
 
         Assert.False(vm.IsOnline);
         Assert.Null(vm.LastUpdateTime);
+        Assert.Equal("无数据", vm.LastUpdateText);
+    }
+
+    [Fact]
+    public void Snapshot_with_min_value_timestamp_reports_no_data()
+    {
+        var vm = new OverviewViewModel();
+
+        // A seeded/empty store snapshot carries DateTime.MinValue (DateTime default). That is not a real
+        // snapshot yet, so the overview must surface 无数据 instead of "0001-01-01 00:00:00".
+        vm.ApplySnapshot(new DeviceSnapshot(new Dictionary<string, object?>(), DateTime.MinValue));
+
+        Assert.Null(vm.LastUpdateTime);
+        Assert.False(vm.HasData);
         Assert.Equal("无数据", vm.LastUpdateText);
     }
 
