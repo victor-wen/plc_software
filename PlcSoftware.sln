@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlcSoftware.Infrastructure.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlcSoftware.App.Tests", "tests\PlcSoftware.App.Tests\PlcSoftware.App.Tests.csproj", "{C08BCDAB-E67C-4756-9226-1A7DC7FD80E9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlcSoftware.Integration.Tests", "tests\PlcSoftware.Integration.Tests\PlcSoftware.Integration.Tests.csproj", "{0D35576D-5A3E-4E00-BBE7-50B3DFFC0271}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -52,6 +54,10 @@ Global
 		{C08BCDAB-E67C-4756-9226-1A7DC7FD80E9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C08BCDAB-E67C-4756-9226-1A7DC7FD80E9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C08BCDAB-E67C-4756-9226-1A7DC7FD80E9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0D35576D-5A3E-4E00-BBE7-50B3DFFC0271}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0D35576D-5A3E-4E00-BBE7-50B3DFFC0271}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0D35576D-5A3E-4E00-BBE7-50B3DFFC0271}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0D35576D-5A3E-4E00-BBE7-50B3DFFC0271}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{09A2DDBC-217D-40AD-AFB6-56F98532D3FB} = {03D96A19-AC19-41DC-AC33-78E417B06D85}
@@ -60,5 +66,6 @@ Global
 		{921E55FB-2C33-41AF-9F0F-3CE7C6CB288C} = {DC7229E6-3972-4782-8438-31B208AD934F}
 		{9CBAF8FE-9506-45D4-A225-FA0D83FFD425} = {DC7229E6-3972-4782-8438-31B208AD934F}
 		{C08BCDAB-E67C-4756-9226-1A7DC7FD80E9} = {DC7229E6-3972-4782-8438-31B208AD934F}
+		{0D35576D-5A3E-4E00-BBE7-50B3DFFC0271} = {DC7229E6-3972-4782-8438-31B208AD934F}
 	EndGlobalSection
 EndGlobal
