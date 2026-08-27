@@ -34,19 +34,27 @@ public class HistoryRetentionServiceTests : IDisposable
 
     private void DeleteDatabaseFiles()
     {
-        if (File.Exists(_dbPath))
+        // SQLite (Windows especially) may keep the file handles open a short moment after the
+        // connection pool is cleared; retry the delete a few times before giving up.
+        var paths = new[] { _dbPath, _dbPath + "-wal", _dbPath + "-shm" };
+        foreach (var path in paths)
         {
-            File.Delete(_dbPath);
-        }
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                try
+                {
+                    if (File.Exists(path))
+                    {
+                        File.Delete(path);
+                    }
 
-        if (File.Exists(_dbPath + "-wal"))
-        {
-            File.Delete(_dbPath + "-wal");
-        }
-
-        if (File.Exists(_dbPath + "-shm"))
-        {
-            File.Delete(_dbPath + "-shm");
+                    break;
+                }
+                catch (IOException)
+                {
+                    Thread.Sleep(50);
+                }
+            }
         }
     }
 
