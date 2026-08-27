@@ -36,8 +36,11 @@ public enum MachineMode
 ///
 /// <para><b>Mode.</b> Derived from the PLC's reported mode bits M1/M2/M13 (manual / auto / bypass),
 /// in that precedence order. <b>Run</b> is M3. <b>Fault</b> is the D110 alarm code (0 = no fault),
-/// resolved to a message through the injected fault table. <b>Mask (屏蔽)</b> is M110 光栅屏蔽 /
-/// M111 门磁屏蔽.</para>
+/// resolved to a message through the injected fault table, or a 故障码 fallback for an unknown code.
+/// <b>Mask (屏蔽)</b> is M110 光栅屏蔽 / M111 门磁屏蔽 — but sourced from the HMI's <em>held command</em>
+/// state via <see cref="ApplyMaskState"/> (design §4.4), <b>not</b> from a snapshot read: M110/M111 are
+/// holding commands with no PLC feedback point in the fast-block register map, so they never appear in a
+/// decoded snapshot.</para>
 /// </summary>
 public sealed partial class MainViewModel : ObservableObject
 {
@@ -136,8 +139,20 @@ public sealed partial class MainViewModel : ObservableObject
     public void ApplyHeartbeat(HeartbeatStatus status) => Heartbeat = status;
 
     /// <summary>
-    /// Applies one decoded snapshot. Reads the mode bits (M1/M2/M13), the run bit (M3), the mask bits
-    /// (M110/M111) and the fault code (D110), then refreshes the derived text properties.
+    /// Applies the HMI's own held mask command state (design §4.4). This is the only source of the 屏蔽
+    /// flags — M110/M111 are holding commands, not PLC feedback points, so they are never read from a
+    /// snapshot. Called by the composition root when <c>SimpleHeldStateService</c> publishes a change.
+    /// </summary>
+    public void ApplyMaskState(bool lightCurtainBypass, bool doorBypass)
+    {
+        LightCurtainBypass = lightCurtainBypass;
+        DoorBypass = doorBypass;
+    }
+
+    /// <summary>
+    /// Applies one decoded snapshot. Reads the mode bits (M1/M2/M13), the run bit (M3) and the fault code
+    /// (D110), then refreshes the derived text properties. Mask (M110/M111) is deliberately <em>not</em>
+    /// read here — see <see cref="ApplyMaskState"/>.
     /// </summary>
     public void ApplySnapshot(DeviceSnapshot snapshot)
     {
@@ -167,14 +182,12 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         IsRunning = ReadBool(values, "M3");
-        LightCurtainBypass = ReadBool(values, "M110");
-        DoorBypass = ReadBool(values, "M111");
 
         FaultCode = ReadInt(values, "D110") ?? 0;
         HasFault = FaultCode != 0;
         FaultText = HasFault && _faultMessages.TryGetValue(FaultCode, out var message)
             ? message
-            : null;
+            : HasFault ? $"故障码 {FaultCode}" : null;
     }
 
     private static bool ReadBool(IReadOnlyDictionary<string, object?> values, string key)

@@ -8,8 +8,9 @@ namespace PlcSoftware.App.Services;
 /// <summary>
 /// The application's background runtime: starts and joins the three Core loops (connection supervision,
 /// polling, D106 host watchdog) and observes the published snapshot to drive the heartbeat monitor and
-/// the alarm service. It is registered as the single <c>IHostedService</c>, so the Generic Host starts
-/// it on <c>StartAsync</c> and joins it on <c>StopAsync</c>.
+/// the alarm service. It is registered as one of the app's <c>IHostedService</c>s (alongside the
+/// <see cref="SimulationScenarioDriver"/>), so the Generic Host starts them on <c>StartAsync</c> and joins
+/// them on <c>StopAsync</c>.
 ///
 /// <para>Snapshot fan-out is single-writer: <see cref="SnapshotCoordinator"/> is the only publisher, so
 /// every observe callback here runs on the one polling loop thread.</para>

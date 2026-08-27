@@ -164,7 +164,7 @@ public class MainViewModelTests
     }
 
     [Fact]
-    public void Snapshot_unknown_fault_code_keeps_no_message()
+    public void Snapshot_unknown_fault_code_falls_back_to_code_text()
     {
         var vm = new MainViewModel(DefaultFaults());
 
@@ -172,7 +172,7 @@ public class MainViewModelTests
 
         Assert.Equal(99, vm.FaultCode);
         Assert.True(vm.HasFault);
-        Assert.Null(vm.FaultText);
+        Assert.Equal("故障码 99", vm.FaultText);
     }
 
     [Fact]
@@ -189,26 +189,58 @@ public class MainViewModelTests
         Assert.False(vm.HasFault);
     }
 
+    // Mask is sourced from the HMI's held command state (design §4.4), NOT from a snapshot: M110/M111 are
+    // holding commands with no PLC feedback point, so the snapshot never carries them. The VM consumes the
+    // held-state flags via ApplyMaskState (wired from SimpleHeldStateService).
+
     [Fact]
-    public void Snapshot_mask_bits_map_to_bypass_flags()
+    public void ApplyMaskState_true_sets_bypass_flags_and_text()
     {
         var vm = new MainViewModel();
 
-        vm.ApplySnapshot(new DeviceSnapshot(
-            Snap(("M110", true), ("M111", true)),
-            DateTime.UtcNow));
+        vm.ApplyMaskState(true, true);
 
         Assert.True(vm.LightCurtainBypass);
+        Assert.True(vm.DoorBypass);
+        Assert.Equal("已屏蔽", vm.MaskText);
+    }
+
+    [Fact]
+    public void ApplyMaskState_false_clears_bypass_flags_and_text()
+    {
+        var vm = new MainViewModel();
+
+        vm.ApplyMaskState(false, false);
+
+        Assert.False(vm.LightCurtainBypass);
+        Assert.False(vm.DoorBypass);
+        Assert.Equal("正常", vm.MaskText);
+    }
+
+    [Fact]
+    public void ApplyMaskState_partial_flags_map_to_independent_state()
+    {
+        var vm = new MainViewModel();
+
+        vm.ApplyMaskState(true, false);
+        Assert.True(vm.LightCurtainBypass);
+        Assert.False(vm.DoorBypass);
+        Assert.Equal("已屏蔽", vm.MaskText);
+
+        vm.ApplyMaskState(false, true);
+        Assert.False(vm.LightCurtainBypass);
         Assert.True(vm.DoorBypass);
     }
 
     [Fact]
-    public void Snapshot_clear_mask_bits_reports_no_bypass()
+    public void Snapshot_does_not_read_mask_bits()
     {
         var vm = new MainViewModel();
 
+        // Even a snapshot carrying M110/M111 must NOT flip the bypass flags: the snapshot is no longer the
+        // source of the mask state (the point map has no slot for them), so those keys are ignored here.
         vm.ApplySnapshot(new DeviceSnapshot(
-            Snap(("M110", false), ("M111", false)),
+            Snap(("M110", true), ("M111", true)),
             DateTime.UtcNow));
 
         Assert.False(vm.LightCurtainBypass);

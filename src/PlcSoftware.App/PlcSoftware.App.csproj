@@ -13,6 +13,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The App internals (held-mask tracker, mask-aware command decorator, demo scenario driver) are
+         exercised by PlcSoftware.App.Tests, so make them visible to that assembly (CI-only on Windows). -->
+    <InternalsVisibleTo Include="PlcSoftware.App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\PlcSoftware.Core\PlcSoftware.Core.csproj" />
     <ProjectReference Include="..\PlcSoftware.Infrastructure\PlcSoftware.Infrastructure.csproj" />
   </ItemGroup>

@@ -35,8 +35,8 @@ public partial class App : Application
             .ConfigureServices(ConfigureServices)
             .Build();
 
-        // Start the Generic Host: this launches the PlcRuntime hosted service, which starts the
-        // connection-supervision, polling and D106 watchdog loops.
+        // Start the Generic Host: this launches the PlcRuntime hosted service (connection-supervision,
+        // polling and D106 watchdog loops) and the SimulationScenarioDriver (demo scenario replay).
         _host.Start();
 
         // Wire the state fan-out to the view model. The view model stays UI-thread-free; updates are
@@ -45,10 +45,22 @@ public partial class App : Application
         var supervisor = _host.Services.GetRequiredService<ConnectionSupervisor>();
         var store = _host.Services.GetRequiredService<IDeviceStateStore>();
         var heartbeat = _host.Services.GetRequiredService<HeartbeatMonitor>();
+        var heldState = _host.Services.GetRequiredService<SimpleHeldStateService>();
 
         supervisor.StateChanged += state => RunOnUi(() => viewModel.ApplyConnectionState(state));
         store.SnapshotChanged += (_, snapshot) => RunOnUi(() => viewModel.ApplySnapshot(snapshot));
         heartbeat.StatusChanged += status => RunOnUi(() => viewModel.ApplyHeartbeat(status));
+        heldState.MaskStateChanged += () => RunOnUi(() =>
+            viewModel.ApplyMaskState(heldState.LightCurtainBypass, heldState.DoorBypass));
+
+        // Seed once after subscribing so an event raised before the subscription (or before the host start
+        // finished) is not lost — the first StateChanged/SnapshotChanged/StatusChanged can fire while the
+        // hosted loops are still starting, before the wiring above is in place. Latest state wins over any
+        // racing event.
+        viewModel.ApplyConnectionState(supervisor.CurrentState);
+        viewModel.ApplyHeartbeat(heartbeat.Status);
+        viewModel.ApplySnapshot(store.Current);
+        viewModel.ApplyMaskState(heldState.LightCurtainBypass, heldState.DoorBypass);
 
         var window = _host.Services.GetRequiredService<MainWindow>();
         window.DataContext = viewModel;
@@ -76,11 +88,22 @@ public partial class App : Application
         var loader = new JsonConfigurationLoader();
         var faults = loader.LoadFaults(Path.Combine(configDir, "faults.json"));
 
-        // Modbus transport: in-memory simulation behind the shared single-flight queue (design §5.1).
+        // Modbus transport: in-memory simulation behind the shared single-flight queue (design §5.1). The
+        // concrete InMemoryModbusClient is registered so the demo scenario runner can drive its memory
+        // directly while the polling/command paths go through the QueuedModbusClient decorator — all
+        // sharing the one memory instance.
         services.AddSingleton<SimulationMemory>();
-        services.AddSingleton<IModbusClient>(sp => new QueuedModbusClient(
-            new InMemoryModbusClient(sp.GetRequiredService<SimulationMemory>())));
+        services.AddSingleton(sp => new InMemoryModbusClient(sp.GetRequiredService<SimulationMemory>()));
+        services.AddSingleton<IModbusClient>(sp => new QueuedModbusClient(sp.GetRequiredService<InMemoryModbusClient>()));
         services.AddSingleton<ISupervisedConnection, ModbusSupervisedConnection>();
+
+        // Demo scenario driver: advances the simulation clock on a 250 ms cadence so the heartbeat (D101),
+        // step pointer (D200/D102/M200-M205) and counters are alive instead of frozen. Without it the demo
+        // showed a static snapshot and the UI contradicted itself (在线 + 心跳丢失). Fully in-memory.
+        services.AddSingleton(sp => new SimulationScenarioRunner(
+            BuildDefaultDemoScenario(), sp.GetRequiredService<InMemoryModbusClient>()));
+        services.AddSingleton<SimulationScenarioDriver>();
+        services.AddHostedService(sp => sp.GetRequiredService<SimulationScenarioDriver>());
 
         // Core supervision / polling / state services.
         services.AddSingleton(sp => new ConnectionSupervisor(
@@ -103,6 +126,13 @@ public partial class App : Application
             sp.GetRequiredService<ICommandGate>(),
             sp.GetRequiredService<IAsyncDelay>(),
             auditLog: sp.GetRequiredService<IAuditLog>()));
+        // The mask-aware command decorator records M110/M111 holding outcomes into the held-state tracker
+        // (the App-layer source of the 屏蔽 flags). M110/M111 are holding commands, not feedback points:
+        // they have no slot in the fast-block register map, so the tracker — not a snapshot — drives the UI.
+        services.AddSingleton<SimpleHeldStateService>();
+        services.AddSingleton<ICommandService>(sp => new CommandServiceMaskAware(
+            sp.GetRequiredService<CommandService>(),
+            sp.GetRequiredService<SimpleHeldStateService>()));
         services.AddSingleton(sp => new ParameterService(
             sp.GetRequiredService<IModbusClient>(),
             sp.GetRequiredService<ICommandGate>(),
@@ -139,6 +169,27 @@ public partial class App : Application
             new ParameterDefinition { Name = "D204", Address = 104, Unit = "脉冲/mm", Min = 0, Max = 10000 }, // 脉冲当量
             new ParameterDefinition { Name = "D205", Address = 105, Unit = "Hz", Min = 0, Max = 1000 },    // 皮带速度
         };
+
+    /// <summary>
+    /// The default demo scenario for the in-memory simulation: the automatic-flow step pointer cycles
+    /// 0..5 (one step per second, driving D200 / D102 / M200-M205) and the D101 heartbeat increments once
+    /// per second. There are deliberately <em>no</em> fault or connect/disconnect events — a clean, alive
+    /// run (the fix for the 在线 + 心跳丢失 contradiction). Fully in-memory; deterministic under the driver's
+    /// virtual clock.
+    /// </summary>
+    private static SimulationScenario BuildDefaultDemoScenario()
+    {
+        var stepCount = (int)SimulationPoints.StepFlagCount; // 6 steps (0..5).
+        var events = new List<SimulationEvent>();
+        for (var second = 0; second < 60; second++)
+        {
+            events.Add(new SetStepEvent(TimeSpan.FromSeconds(second), (ushort)(second % stepCount)));
+        }
+
+        return new SimulationScenario(
+            events,
+            new SimulationHeartbeat(SimulationPoints.Heartbeat, TimeSpan.FromSeconds(1)));
+    }
 
     private static void RunOnUi(Action action)
     {
