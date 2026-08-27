@@ -142,7 +142,10 @@ public class DiagnosticTerminalViewModelTests
 
         await vm.ConfirmWriteCommand.ExecuteAsync(null);
 
-        Assert.Single(client.Writes);
+        // A FC05 write is a boolean coil value that the fake records in CoilWrites (the register-typed
+        // Writes list can never observe it — it only tracks FC06 register writes). The VM confirm flow
+        // does route the coil write to the client; asserting on the coil log pins that.
+        Assert.Equal(true, client.CoilWrites.Single().Value);
         Assert.False(vm.IsPending);
         Assert.False(vm.IsBusy);
     }
@@ -295,7 +298,13 @@ public class DiagnosticTerminalViewModelTests
 
     private sealed class FakeModbusClient : IModbusClient
     {
+        /// <summary>Register writes (FC06) recorded as (address, value).</summary>
         public List<(ushort Address, ushort Value)> Writes { get; } = new();
+
+        /// <summary>Coil writes (FC05) recorded as (address, value); a coil is a bool, so it is kept
+        /// separate from <see cref="Writes"/> (which is register-typed).</summary>
+        public List<(ushort Address, bool Value)> CoilWrites { get; } = new();
+
         public int ReadHoldingCalls { get; private set; }
         public ushort[]? ReadHolding { get; set; } = Array.Empty<ushort>();
 
@@ -323,7 +332,11 @@ public class DiagnosticTerminalViewModelTests
             => Task.FromResult(new ushort[count]);
 
         public Task WriteSingleCoilAsync(byte slaveId, ushort address, bool value, CancellationToken cancellationToken)
-            => Task.CompletedTask;
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CoilWrites.Add((address, value));
+            return Task.CompletedTask;
+        }
 
         public Task ConnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 

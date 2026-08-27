@@ -156,6 +156,14 @@ public class OverviewViewModelTests
     public void Disconnected_greys_out_displays_and_preserves_last_update()
     {
         var vm = new OverviewViewModel();
+
+        // Establish the online state explicitly, mirroring the sibling online test and every other VM test:
+        // IsOnline is driven ONLY by the supervised link state (ApplyConnectionState), never by a snapshot
+        // (design §5.3/§6.2 — the link's grey-out flag is a function of the connection state; a snapshot only
+        // supplies the frozen data + timestamp). A snapshot proves data arrived, but it does not flip the link
+        // online. So the "go offline" transition below is meaningful only after the link was reported online.
+        vm.ApplyConnectionState(ConnectionState.Online);
+
         var timestamp = new DateTime(2026, 8, 27, 12, 0, 0, DateTimeKind.Utc);
         vm.ApplySnapshot(new DeviceSnapshot(StepSnap(0), timestamp));
         Assert.True(vm.IsOnline);

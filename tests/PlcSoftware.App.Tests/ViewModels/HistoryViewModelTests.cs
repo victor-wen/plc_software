@@ -116,6 +116,11 @@ public class HistoryViewModelTests
         alarms.Add(Alarm(new DateTime(2026, 1, 10), "急停,屏蔽", "=SUM(A1:A2)"));
         audits.Add(Audit(new DateTime(2026, 1, 11), "写入 D201", "300"));
 
+        // The CSV export flattens AlarmRows/AuditRows (HistoryViewModel.BuildCsv), NOT the injected query
+        // delegates. Those collections are populated by Query(), so load them first — mirroring
+        // Query_loads_rows_and_reports_counts. Without this, Export emits only the header row.
+        vm.QueryCommand.Execute(null);
+
         vm.ExportCommand.Execute(null);
 
         var (fileName, content) = Assert.Single(saved);
