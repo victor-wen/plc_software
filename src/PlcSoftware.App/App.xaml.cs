@@ -53,6 +53,12 @@ public partial class App : Application
         heldState.MaskStateChanged += () => RunOnUi(() =>
             viewModel.ApplyMaskState(heldState.LightCurtainBypass, heldState.DoorBypass));
 
+        // Overview page (design §6.2): a dedicated read-only view model that only consumes the decoded
+        // snapshot and the supervised link state. Wired exactly like MainViewModel — no new service.
+        var overview = _host.Services.GetRequiredService<OverviewViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => overview.ApplyConnectionState(state));
+        store.SnapshotChanged += (_, snapshot) => RunOnUi(() => overview.ApplySnapshot(snapshot));
+
         // Seed once after subscribing so an event raised before the subscription (or before the host start
         // finished) is not lost — the first StateChanged/SnapshotChanged/StatusChanged can fire while the
         // hosted loops are still starting, before the wiring above is in place. Latest state wins over any
@@ -61,6 +67,8 @@ public partial class App : Application
         viewModel.ApplyHeartbeat(heartbeat.Status);
         viewModel.ApplySnapshot(store.Current);
         viewModel.ApplyMaskState(heldState.LightCurtainBypass, heldState.DoorBypass);
+        overview.ApplyConnectionState(supervisor.CurrentState);
+        overview.ApplySnapshot(store.Current);
 
         var window = _host.Services.GetRequiredService<MainWindow>();
         window.DataContext = viewModel;
@@ -150,9 +158,13 @@ public partial class App : Application
         services.AddSingleton<PlcRuntime>();
         services.AddHostedService(sp => sp.GetRequiredService<PlcRuntime>());
 
-        // View model + main window.
+        // View model(s) + main window. The overview view model is a WPF-free consumer of the same
+        // DeviceStateStore / ConnectionSupervisor the main view model reads; the main window takes it
+        // (plus the overview view) via constructor injection so the 总览 nav entry shows the page.
         services.AddSingleton(sp => new MainViewModel(
             faults.ToDictionary(f => f.Code, f => f.Message)));
+        services.AddSingleton<OverviewViewModel>();
+        services.AddSingleton<OverviewView>();
         services.AddSingleton<MainWindow>();
     }
 
