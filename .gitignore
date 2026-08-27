@@ -488,3 +488,7 @@ $RECYCLE.BIN/
 
 # Serena MCP local workspace
 .serena/
+
+# Local NuGet caches (workspace-scoped; restored on demand)
+.nuget-cache/
+.nuget-http/

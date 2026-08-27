@@ -186,6 +186,7 @@ K1-K7 故障代码与提示文字列表。`code` 对应 `D110` 故障寄存器�
 | `app.logo` | string | 标题栏角标文字（如 `VISA`）。 |
 | `app.defaultPage` | string | 启动时显示的页面 id；缺省为第一页。 |
 | `app.users` | array | 登录凭据列表（`username`/`password`）。**为空数组时登录表单接受任意输入**（模拟/演示模式）。 |
+| `app.requireLogin` | bool | 登录门禁：`true` 时未登录访问除登录页外的任何页面会被重定向到登录页（导航栏右上角显示当前账号与「退出登录」）。缺省时按 `users` 是否非空决定（有凭据即要求登录）。 |
 | `app.loginSuccess` | action | 登录成功后的动作（通常 `navigate` 到主页面）。 |
 | `pages[].id` | string | 页面唯一 id（`navigate` 目标与导航栏入口）。 |
 | `pages[].title` | string | 页面标题（导航栏显示；缺省用 id）。 |
@@ -201,6 +202,7 @@ K1-K7 故障代码与提示文字列表。`code` 对应 `D110` 故障寄存器�
 | `commandBar` | 底部横排命令排 | `buttons` 数组（启动/停止/复位/急停…）。 |
 | `loginForm` | 内容区 | 用户名/密码/确认表单；每页最多一个。 `app.users` 为空则放行。 |
 | `parameterGroup` | 内容区 | 位置参数表：`groups[].title` + `groups[].rows[]`（`axis` + `position`/`speed` 字段）。每个字段：`register`（可写参数名，如 `D201`）、`label`、`unit`、`min`/`max`。写入走 `ParameterService`（写后读回一致才成功，范围未配置/非法、离线均拒绝）。 |
+| `dashboard` | 内容区 | **首页磁贴看板**：`tiles[]`（见 5.4）。运行时可在页面上「编辑磁贴」调整大小/顺序/内容，编辑结果持久化到输出目录 `config/dashboard.tiles.json`（与仓库的 ui-layout.json 分离；「恢复默认」清除该文件回到布局默认）。 |
 | `pageHost` | 内容区 | 宿主旧版（硬编码 XAML）页面：`hostedView` 取 `OverviewView` / `OperationBar` / `ManualView` / `ParametersView` / `IoDiagnosticsView` / `DiagnosticTerminalView` / `ConnectionSettingsView` / `HistoryView`。 |
 
 ### 5.3 按钮动作 `action`
@@ -211,11 +213,36 @@ K1-K7 故障代码与提示文字列表。`code` 对应 `D110` 故障寄存器�
 | `navigate` | `page` | 切换到指定页面（目标必须存在）。 |
 | `command` | `writes[]` | 依次发送 `target`（`CommandTarget` 枚举名：`Start`/`Stop`/`Reset`/`EStopRequest`/`AutoMode`/`BypassMode`/…）+ `value`（保持写入值；脉冲忽略）。多个 writes 可组合模式互斥对（自动 = `AutoMode:true` + `BypassMode:false`；手动 = 两个 false）。 |
 | `login` | — | 跳转到含 `loginForm` 模块的页面。 |
-| `logout` | — | 退出登录（清除全部页面登录态）。 |
+| `logout` | — | 退出登录（清除全部页面登录态并回到登录页）。 |
 | `up` / `down` | — | 页面列表顺序的上一页 / 下一页。 |
 | `back` | — | 返回上一次访问的页面。 |
 
-### 5.4 注意事项
+### 5.4 磁贴看板 `dashboard`（设计 §7）
+
+```json
+{ "type": "dashboard", "tiles": [
+  { "id": "start", "kind": "button", "text": "启动",
+    "action": { "kind": "command", "writes": [ { "target": "Start" } ] },
+    "cols": 3, "rows": 2, "color": "#1E6FB8" },
+  { "id": "run", "kind": "status", "text": "运行", "status": "Run", "cols": 3, "rows": 2 },
+  { "id": "clock", "kind": "clock", "text": "当前时间", "cols": 2, "rows": 1 },
+  { "id": "note", "kind": "text", "text": "生产看板", "cols": 2, "rows": 1 },
+  { "id": "alarm", "kind": "navigate", "text": "报警",
+    "action": { "kind": "navigate", "page": "history" }, "cols": 3, "rows": 2 }
+] }
+```
+
+| `kind` | 说明 |
+|---|---|
+| `button` | 按钮磁贴：点击执行 `action`（命令写入）。编辑模式下可改文本、命令目标与取值。 |
+| `navigate` | 跳转磁贴：点击切换到 `action.page`。编辑模式下可改目标页面。 |
+| `status` | 实时状态磁贴：`status` 取 `Connection`（串口状态）/ `Heartbeat`（心跳）/ `Mode`（模式）/ `Run`（运行）/ `Fault`（故障）/ `Mask`（屏蔽），值随主状态实时刷新。 |
+| `clock` | 时间磁贴：每秒刷新当前日期时间。 |
+| `text` | 静态文本磁贴。 |
+
+`cols` / `rows` 为磁贴占用的网格列/行长（1..4，默认 2×2；网格总宽 12 列）。点击看板右上「编辑磁贴」进入编辑模式：每块磁贴左上 `↑/↓` 调整顺序、底部 `−列/+列/−行/+行` 调整大小、内容区直接编辑文本/目标/状态类型；「保存」写入 `config/dashboard.tiles.json`，「取消」还原本次编辑快照，「恢复默认」清除保存文件回到 `ui-layout.json` 中的默认磁贴。
+
+### 5.5 注意事项
 
 - 页面 id 必须唯一；`navigate` 目标与 `app.defaultPage` 必须存在；`command` 的 `target` 必须是合法 `CommandTarget`；校验失败会在启动时抛错并列出全部问题。
 - `parameterGroup` 的 `register` 必须落在应用的可写参数集内（当前为 `D201`/`D202`/`D204`/`D205`，见 `App.BuildWritableParameters`）；未在集合内的寄存器写入会被 `ParameterService` 拒绝。

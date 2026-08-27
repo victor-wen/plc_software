@@ -148,6 +148,146 @@ public class UiLayoutLoaderTests
     }
 
     [Fact]
+    public void Login_required_defaults_to_true_when_users_are_configured()
+    {
+        var layout = UiLayoutLoader.Load("""
+            {
+              "app": { "users": [ { "username": "admin", "password": "1234" } ] },
+              "pages": [ { "id": "a", "modules": [ { "type": "header" } ] } ]
+            }
+            """);
+
+        Assert.True(layout.App.LoginRequired);
+        Assert.Null(layout.App.RequireLogin);
+    }
+
+    [Fact]
+    public void Login_required_defaults_to_false_without_users_and_can_be_overridden()
+    {
+        var layout = UiLayoutLoader.Load("""
+            {
+              "app": {},
+              "pages": [ { "id": "a", "modules": [ { "type": "header" } ] } ]
+            }
+            """);
+        Assert.False(layout.App.LoginRequired);
+
+        var forced = UiLayoutLoader.Load("""
+            {
+              "app": { "requireLogin": true },
+              "pages": [ { "id": "a", "modules": [ { "type": "header" } ] } ]
+            }
+            """);
+        Assert.True(forced.App.LoginRequired);
+    }
+
+    [Fact]
+    public void Dashboard_module_parses_all_tile_kinds()
+    {
+        var layout = UiLayoutLoader.Load("""
+            {
+              "app": { "defaultPage": "home" },
+              "pages": [
+                { "id": "home", "title": "首页", "modules": [
+                  { "type": "dashboard", "tiles": [
+                    { "id": "start", "kind": "button", "text": "启动", "action": { "kind": "command", "writes": [ { "target": "Start" } ] }, "cols": 3, "rows": 2, "color": "#1E6FB8" },
+                    { "id": "mode", "kind": "status", "status": "Mode", "cols": 2, "rows": 2 },
+                    { "id": "clock", "kind": "clock", "cols": 2, "rows": 1 },
+                    { "id": "note", "kind": "text", "text": "生产看板", "cols": 2, "rows": 1 },
+                    { "id": "alarm", "kind": "navigate", "text": "报警", "action": { "kind": "navigate", "page": "history" } }
+                  ] }
+                ] },
+                { "id": "history", "title": "报警与历史", "modules": [ { "type": "header" } ] }
+              ]
+            }
+            """);
+
+        var home = layout.FindPage("home")!;
+        var dashboard = home.Modules.Single(m => m.Type == UiModuleType.Dashboard);
+        Assert.Equal(5, dashboard.Tiles.Count);
+
+        var start = dashboard.Tiles[0];
+        Assert.Equal(UiTileKind.Button, start.Kind);
+        Assert.Equal("启动", start.Text);
+        Assert.Equal(3, start.Cols);
+        Assert.Equal(2, start.Rows);
+        Assert.Equal(UiActionKind.Command, start.Action!.Kind);
+        Assert.Equal("Start", start.Action.Writes[0].Target);
+
+        Assert.Equal(UiTileKind.Status, dashboard.Tiles[1].Kind);
+        Assert.Equal(UiTileStatus.Mode, dashboard.Tiles[1].Status);
+        Assert.Equal(UiTileKind.Clock, dashboard.Tiles[2].Kind);
+        Assert.Equal(UiTileKind.Text, dashboard.Tiles[3].Kind);
+        Assert.Equal(UiTileKind.Navigate, dashboard.Tiles[4].Kind);
+        Assert.Equal("history", dashboard.Tiles[4].Action!.Page);
+    }
+
+    [Fact]
+    public void Button_tile_without_action_fails_validation()
+    {
+        var ex = Assert.Throws<UiLayoutValidationException>(() => UiLayoutLoader.Load("""
+            {
+              "pages": [
+                { "id": "home", "modules": [
+                  { "type": "dashboard", "tiles": [ { "id": "t1", "kind": "button", "text": "启动" } ] }
+                ] }
+              ]
+            }
+            """));
+
+        Assert.Contains("has no action", ex.Message);
+    }
+
+    [Fact]
+    public void Status_tile_without_status_fails_validation()
+    {
+        var ex = Assert.Throws<UiLayoutValidationException>(() => UiLayoutLoader.Load("""
+            {
+              "pages": [
+                { "id": "home", "modules": [
+                  { "type": "dashboard", "tiles": [ { "id": "t1", "kind": "status" } ] }
+                ] }
+              ]
+            }
+            """));
+
+        Assert.Contains("without a status kind", ex.Message);
+    }
+
+    [Fact]
+    public void Tile_size_out_of_range_fails_validation()
+    {
+        var ex = Assert.Throws<UiLayoutValidationException>(() => UiLayoutLoader.Load("""
+            {
+              "pages": [
+                { "id": "home", "modules": [
+                  { "type": "dashboard", "tiles": [ { "id": "t1", "kind": "clock", "cols": 6, "rows": 1 } ] }
+                ] }
+              ]
+            }
+            """));
+
+        Assert.Contains("must be within 1..4", ex.Message);
+    }
+
+    [Fact]
+    public void Duplicate_tile_ids_fail_validation()
+    {
+        var ex = Assert.Throws<UiLayoutValidationException>(() => UiLayoutLoader.Load("""
+            {
+              "pages": [
+                { "id": "home", "modules": [
+                  { "type": "dashboard", "tiles": [
+                    { "id": "t1", "kind": "clock" }, { "id": "t1", "kind": "clock" } ] }
+                ] }
+              ]
+            }
+            """));
+
+        Assert.Contains("duplicate tile id", ex.Message);
+    }
+
+    [Fact]
     public void Malformed_json_throws_validation_exception()
     {
         var ex = Assert.Throws<UiLayoutValidationException>(() => UiLayoutLoader.Load("{ not json"));

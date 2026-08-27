@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PlcSoftware.App.Services;
 using PlcSoftware.Core.Abstractions;
 using PlcSoftware.Core.Configuration;
 using PlcSoftware.Core.Models;
@@ -29,6 +30,9 @@ public interface IConfigurableUiNavigator
 
     /// <summary>Switches to the sign-in page (the page that hosts the loginForm module).</summary>
     void ShowLogin();
+
+    /// <summary>Records a successful sign-in (the shell shows the account and opens the gate).</summary>
+    void SignIn(string username);
 
     /// <summary>Clears the shell sign-in state.</summary>
     void SignOut();
@@ -91,7 +95,9 @@ public sealed partial class ConfigurablePageViewModel : ObservableObject
         UiPageDefinition page,
         IConfigurableUiNavigator navigator,
         ICommandService commandService,
-        ParameterService parameterService)
+        ParameterService parameterService,
+        ITileStore? tileStore = null,
+        MainViewModel? mainViewModel = null)
     {
         _layout = layout ?? throw new ArgumentNullException(nameof(layout));
         _page = page ?? throw new ArgumentNullException(nameof(page));
@@ -103,6 +109,11 @@ public sealed partial class ConfigurablePageViewModel : ObservableObject
         NavButtons = BuildButtons(this, page.Modules.Where(m => m.Type == UiModuleType.Nav));
         CommandBarButtons = BuildButtons(this, page.Modules.Where(m => m.Type == UiModuleType.CommandBar));
         ParameterGroups = BuildParameterGroups(page.Modules.Where(m => m.Type == UiModuleType.ParameterGroup));
+        if (page.Modules.Any(m => m.Type == UiModuleType.Dashboard))
+        {
+            Dashboard = new DashboardViewModel(layout, page, tileStore ?? throw new ArgumentNullException(nameof(tileStore)),
+                navigator, commandService, mainViewModel);
+        }
     }
 
     /// <summary>The page id (used by the shell to key the view).</summary>
@@ -140,6 +151,9 @@ public sealed partial class ConfigurablePageViewModel : ObservableObject
     /// <summary>The 位置参数 tables of the content region.</summary>
     public ObservableCollection<ParameterGroupViewModel> ParameterGroups { get; }
 
+    /// <summary>The home dashboard board (dashboard module), or null when the page has none.</summary>
+    public DashboardViewModel? Dashboard { get; }
+
     /// <summary>Accepts the sign-in form (validates against app.users, runs app.loginSuccess).</summary>
     [RelayCommand(CanExecute = nameof(CanLoginConfirm))]
     private void LoginConfirm()
@@ -160,6 +174,7 @@ public sealed partial class ConfigurablePageViewModel : ObservableObject
         IsSignedIn = true;
         LoginError = null;
         Password = string.Empty;
+        _navigator.SignIn(Username);
         if (_layout.App.LoginSuccess is not null)
         {
             _ = ExecuteActionAsync(_layout.App.LoginSuccess, CancellationToken.None);

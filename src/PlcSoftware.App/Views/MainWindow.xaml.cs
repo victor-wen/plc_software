@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
+using PlcSoftware.App.Services;
 using PlcSoftware.App.ViewModels;
 using PlcSoftware.Core.Abstractions;
 using PlcSoftware.Core.Configuration;
@@ -60,10 +61,13 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
     // otherwise. The nav bar gets one button per configured page and the default configured page is shown.
     private readonly ICommandService? _configCommandService;
     private readonly ParameterService? _configParameterService;
+    private readonly MainViewModel? _configMainViewModel;
     private UiLayoutDefinition? _configLayout;
     private readonly Dictionary<string, ConfigurablePageViewModel> _configPageVms = new();
     private readonly Dictionary<string, ConfigurablePageView> _configPageViews = new();
     private readonly List<string> _configHistory = new();
+    private bool _isSignedIn;
+    private string? _signedInUser;
 
     /// <summary>The window-close jog-release task, awaited (bounded) in <see cref="OnWindowClosing"/> so the
     /// M106-M109 false write gets a chance to land before the host stops in <c>App.OnExit</c>.</summary>
@@ -87,7 +91,8 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
         HistoryViewModel historyViewModel,
         HistoryView historyView,
         ICommandService? configCommandService = null,
-        ParameterService? configParameterService = null)
+        ParameterService? configParameterService = null,
+        MainViewModel? configMainViewModel = null)
     {
         InitializeComponent();
 
@@ -109,6 +114,7 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
         _historyView = historyView ?? throw new ArgumentNullException(nameof(historyView));
         _configCommandService = configCommandService;
         _configParameterService = configParameterService;
+        _configMainViewModel = configMainViewModel;
 
         // Configurable HMI shell (design §7): wire the configured pages when ui-layout.json is present.
         // A missing/invalid layout falls back to the legacy navigation (invalid layouts throw on startup so
@@ -304,13 +310,39 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
             return;
         }
 
-        ReleaseManualJogsOnSwitch();
         var page = _configLayout.FindPage(pageId);
         if (page is null)
         {
             return;
         }
 
+        // Sign-in gate (design §7 登录机制): while the shell requires login and the visitor is not
+        // signed in, every page except the sign-in page redirects to the sign-in page.
+        var loginPage = LoginPageId();
+        if (_configLayout.App.LoginRequired && !_isSignedIn
+            && (pageId != loginPage || loginPage is null))
+        {
+            if (loginPage is null)
+            {
+                return; // no sign-in page configured; the gate cannot be satisfied — stay put.
+            }
+
+            NavigateTo(loginPage);
+            return;
+        }
+
+        NavigateTo(pageId);
+    }
+
+    /// <summary>Shows the (already gated) page in the host.</summary>
+    private void NavigateTo(string pageId)
+    {
+        if (_configLayout is null)
+        {
+            return;
+        }
+
+        ReleaseManualJogsOnSwitch();
         if (_configHistory.Count == 0 || _configHistory[^1] != pageId)
         {
             _configHistory.Add(pageId);
@@ -318,8 +350,8 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
 
         if (!_configPageVms.TryGetValue(pageId, out var vm))
         {
-            vm = new ConfigurablePageViewModel(_configLayout, page, this,
-                _configCommandService!, _configParameterService!);
+            vm = new ConfigurablePageViewModel(_configLayout, _configLayout.FindPage(pageId)!,
+                this, _configCommandService!, _configParameterService!, JsonTileStore.Default(), _configMainViewModel);
             _configPageVms[pageId] = vm;
         }
 
@@ -333,6 +365,42 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
         view.Apply(vm);
         PageHost.Content = view;
     }
+
+    /// <inheritdoc />
+    public void SignIn(string username)
+    {
+        _isSignedIn = true;
+        _signedInUser = username;
+        SignedInText.Text = $"已登录：{username}";
+        SignOutButton.Visibility = Visibility.Visible;
+    }
+
+    /// <inheritdoc />
+    public void SignOut()
+    {
+        _isSignedIn = false;
+        _signedInUser = null;
+        SignedInText.Text = string.Empty;
+        SignOutButton.Visibility = Visibility.Collapsed;
+        foreach (var vm in _configPageVms.Values)
+        {
+            vm.SignOut();
+        }
+
+        if (_configLayout is not null && LoginPageId() is { } login)
+        {
+            NavigateTo(login); // back to the sign-in gate.
+        }
+    }
+
+    private void OnSignOutClicked(object sender, RoutedEventArgs e) => SignOut();
+
+    /// <summary>The id of the page hosting the loginForm module, or null.</summary>
+    private string? LoginPageId()
+        => _configLayout?.Pages.FirstOrDefault(p => p.Modules.Any(m => m.Type == UiModuleType.LoginForm))?.Id;
+
+    private string? CurrentConfigPageId()
+        => _configHistory.Count > 0 ? _configHistory[^1] : null;
 
     /// <inheritdoc />
     public void NavigateUp()
@@ -395,18 +463,6 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
             Navigate(loginPage.Id);
         }
     }
-
-    /// <inheritdoc />
-    public void SignOut()
-    {
-        foreach (var vm in _configPageVms.Values)
-        {
-            vm.SignOut();
-        }
-    }
-
-    private string? CurrentConfigPageId()
-        => _configHistory.Count > 0 ? _configHistory[^1] : null;
 
     /// <summary>Resolves a pageHost module's legacy view name to the injected view instance (null = unknown).</summary>
     private FrameworkElement? ResolveLegacyView(string? viewName)

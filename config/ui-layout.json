@@ -4,46 +4,495 @@
     "logo": "VISA",
     "defaultPage": "login",
     "users": [
-      { "username": "admin", "password": "1234" }
+      {
+        "username": "admin",
+        "password": "1234"
+      }
     ],
-    "loginSuccess": { "kind": "navigate", "page": "position-loading" }
+    "loginSuccess": {
+      "kind": "navigate",
+      "page": "home"
+    },
+    "requireLogin": true
   },
   "pages": [
     {
       "id": "login",
       "title": "登录",
       "modules": [
-        { "type": "header" },
+        {
+          "type": "header"
+        },
         {
           "type": "menu",
           "buttons": [
-            { "text": "手动模式", "action": { "kind": "command", "writes": [ { "target": "AutoMode", "value": false }, { "target": "BypassMode", "value": false } ] } },
-            { "text": "自动模式", "action": { "kind": "command", "writes": [ { "target": "AutoMode", "value": true }, { "target": "BypassMode", "value": false } ] } },
-            { "text": "报警", "action": { "kind": "navigate", "page": "history" } },
-            { "text": "设置", "action": { "kind": "navigate", "page": "parameters" } },
-            { "text": "登录", "action": { "kind": "login" } },
-            { "text": "IO设置", "action": { "kind": "navigate", "page": "io-diagnostics" } }
+            {
+              "text": "手动模式",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "AutoMode",
+                    "value": false
+                  },
+                  {
+                    "target": "BypassMode",
+                    "value": false
+                  }
+                ]
+              }
+            },
+            {
+              "text": "自动模式",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "AutoMode",
+                    "value": true
+                  },
+                  {
+                    "target": "BypassMode",
+                    "value": false
+                  }
+                ]
+              }
+            },
+            {
+              "text": "报警",
+              "action": {
+                "kind": "navigate",
+                "page": "history"
+              }
+            },
+            {
+              "text": "设置",
+              "action": {
+                "kind": "navigate",
+                "page": "parameters"
+              }
+            },
+            {
+              "text": "登录",
+              "action": {
+                "kind": "login"
+              }
+            },
+            {
+              "text": "IO设置",
+              "action": {
+                "kind": "navigate",
+                "page": "io-diagnostics"
+              }
+            }
           ]
         },
         {
           "type": "nav",
           "buttons": [
-            { "text": "型号选择", "action": { "kind": "none" } },
-            { "text": "辊道", "action": { "kind": "none" } },
-            { "text": "AGV", "action": { "kind": "none" } },
-            { "text": "上一页", "action": { "kind": "up" } },
-            { "text": "下一页", "action": { "kind": "down" } },
-            { "text": "返回", "action": { "kind": "back" } }
+            {
+              "text": "型号选择",
+              "action": {
+                "kind": "none"
+              }
+            },
+            {
+              "text": "辊道",
+              "action": {
+                "kind": "none"
+              }
+            },
+            {
+              "text": "AGV",
+              "action": {
+                "kind": "none"
+              }
+            },
+            {
+              "text": "上一页",
+              "action": {
+                "kind": "up"
+              }
+            },
+            {
+              "text": "下一页",
+              "action": {
+                "kind": "down"
+              }
+            },
+            {
+              "text": "返回",
+              "action": {
+                "kind": "back"
+              }
+            }
           ]
         },
-        { "type": "loginForm" },
+        {
+          "type": "loginForm"
+        },
         {
           "type": "commandBar",
           "buttons": [
-            { "text": "启动", "action": { "kind": "command", "writes": [ { "target": "Start" } ] } },
-            { "text": "停止", "action": { "kind": "command", "writes": [ { "target": "Stop" } ] } },
-            { "text": "复位", "action": { "kind": "command", "writes": [ { "target": "Reset" } ] } },
-            { "text": "急停", "action": { "kind": "command", "writes": [ { "target": "EStopRequest" } ] } }
+            {
+              "text": "启动",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "Start"
+                  }
+                ]
+              }
+            },
+            {
+              "text": "停止",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "Stop"
+                  }
+                ]
+              }
+            },
+            {
+              "text": "复位",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "Reset"
+                  }
+                ]
+              }
+            },
+            {
+              "text": "急停",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "EStopRequest"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "home",
+      "title": "首页看板",
+      "modules": [
+        {
+          "type": "header"
+        },
+        {
+          "type": "menu",
+          "buttons": [
+            {
+              "text": "手动模式",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "AutoMode",
+                    "value": false
+                  },
+                  {
+                    "target": "BypassMode",
+                    "value": false
+                  }
+                ]
+              }
+            },
+            {
+              "text": "自动模式",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "AutoMode",
+                    "value": true
+                  },
+                  {
+                    "target": "BypassMode",
+                    "value": false
+                  }
+                ]
+              }
+            },
+            {
+              "text": "报警",
+              "action": {
+                "kind": "navigate",
+                "page": "history"
+              }
+            },
+            {
+              "text": "设置",
+              "action": {
+                "kind": "navigate",
+                "page": "parameters"
+              }
+            },
+            {
+              "text": "登录",
+              "action": {
+                "kind": "login"
+              }
+            },
+            {
+              "text": "IO设置",
+              "action": {
+                "kind": "navigate",
+                "page": "io-diagnostics"
+              }
+            }
+          ]
+        },
+        {
+          "type": "nav",
+          "buttons": [
+            {
+              "text": "型号选择",
+              "action": {
+                "kind": "none"
+              }
+            },
+            {
+              "text": "辊道",
+              "action": {
+                "kind": "none"
+              }
+            },
+            {
+              "text": "AGV",
+              "action": {
+                "kind": "none"
+              }
+            },
+            {
+              "text": "上一页",
+              "action": {
+                "kind": "up"
+              }
+            },
+            {
+              "text": "下一页",
+              "action": {
+                "kind": "down"
+              }
+            },
+            {
+              "text": "返回",
+              "action": {
+                "kind": "back"
+              }
+            }
+          ]
+        },
+        {
+          "type": "dashboard",
+          "tiles": [
+            {
+              "id": "conn",
+              "kind": "status",
+              "text": "串口状态",
+              "status": "Connection",
+              "cols": 3,
+              "rows": 2
+            },
+            {
+              "id": "heartbeat",
+              "kind": "status",
+              "text": "心跳",
+              "status": "Heartbeat",
+              "cols": 3,
+              "rows": 2
+            },
+            {
+              "id": "mode",
+              "kind": "status",
+              "text": "模式",
+              "status": "Mode",
+              "cols": 3,
+              "rows": 2
+            },
+            {
+              "id": "run",
+              "kind": "status",
+              "text": "运行",
+              "status": "Run",
+              "cols": 3,
+              "rows": 2
+            },
+            {
+              "id": "fault",
+              "kind": "status",
+              "text": "故障",
+              "status": "Fault",
+              "cols": 4,
+              "rows": 2
+            },
+            {
+              "id": "clock",
+              "kind": "clock",
+              "text": "当前时间",
+              "cols": 4,
+              "rows": 1
+            },
+            {
+              "id": "note",
+              "kind": "text",
+              "text": "PLC 上位机监控系统",
+              "cols": 4,
+              "rows": 1
+            },
+            {
+              "id": "start",
+              "kind": "button",
+              "text": "启动",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "Start"
+                  }
+                ]
+              },
+              "cols": 2,
+              "rows": 1
+            },
+            {
+              "id": "stop",
+              "kind": "button",
+              "text": "停止",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "Stop"
+                  }
+                ]
+              },
+              "cols": 2,
+              "rows": 1
+            },
+            {
+              "id": "reset",
+              "kind": "button",
+              "text": "复位",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "Reset"
+                  }
+                ]
+              },
+              "cols": 2,
+              "rows": 1
+            },
+            {
+              "id": "estop",
+              "kind": "button",
+              "text": "急停",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "EStopRequest"
+                  }
+                ]
+              },
+              "cols": 2,
+              "rows": 1
+            },
+            {
+              "id": "nav-alarm",
+              "kind": "navigate",
+              "text": "报警与历史",
+              "action": {
+                "kind": "navigate",
+                "page": "history"
+              },
+              "cols": 3,
+              "rows": 2
+            },
+            {
+              "id": "nav-position",
+              "kind": "navigate",
+              "text": "位置参数",
+              "action": {
+                "kind": "navigate",
+                "page": "position-loading"
+              },
+              "cols": 3,
+              "rows": 2
+            },
+            {
+              "id": "nav-params",
+              "kind": "navigate",
+              "text": "工程参数",
+              "action": {
+                "kind": "navigate",
+                "page": "parameters"
+              },
+              "cols": 3,
+              "rows": 2
+            }
+          ]
+        },
+        {
+          "type": "commandBar",
+          "buttons": [
+            {
+              "text": "启动",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "Start"
+                  }
+                ]
+              }
+            },
+            {
+              "text": "停止",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "Stop"
+                  }
+                ]
+              }
+            },
+            {
+              "text": "复位",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "Reset"
+                  }
+                ]
+              }
+            },
+            {
+              "text": "急停",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "EStopRequest"
+                  }
+                ]
+              }
+            }
           ]
         }
       ]
@@ -52,27 +501,112 @@
       "id": "position-loading",
       "title": "位置参数-上料道",
       "modules": [
-        { "type": "header" },
+        {
+          "type": "header"
+        },
         {
           "type": "menu",
           "buttons": [
-            { "text": "手动模式", "action": { "kind": "command", "writes": [ { "target": "AutoMode", "value": false }, { "target": "BypassMode", "value": false } ] } },
-            { "text": "自动模式", "action": { "kind": "command", "writes": [ { "target": "AutoMode", "value": true }, { "target": "BypassMode", "value": false } ] } },
-            { "text": "报警", "action": { "kind": "navigate", "page": "history" } },
-            { "text": "设置", "action": { "kind": "navigate", "page": "parameters" } },
-            { "text": "登录", "action": { "kind": "login" } },
-            { "text": "IO设置", "action": { "kind": "navigate", "page": "io-diagnostics" } }
+            {
+              "text": "手动模式",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "AutoMode",
+                    "value": false
+                  },
+                  {
+                    "target": "BypassMode",
+                    "value": false
+                  }
+                ]
+              }
+            },
+            {
+              "text": "自动模式",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "AutoMode",
+                    "value": true
+                  },
+                  {
+                    "target": "BypassMode",
+                    "value": false
+                  }
+                ]
+              }
+            },
+            {
+              "text": "报警",
+              "action": {
+                "kind": "navigate",
+                "page": "history"
+              }
+            },
+            {
+              "text": "设置",
+              "action": {
+                "kind": "navigate",
+                "page": "parameters"
+              }
+            },
+            {
+              "text": "登录",
+              "action": {
+                "kind": "login"
+              }
+            },
+            {
+              "text": "IO设置",
+              "action": {
+                "kind": "navigate",
+                "page": "io-diagnostics"
+              }
+            }
           ]
         },
         {
           "type": "nav",
           "buttons": [
-            { "text": "型号选择", "action": { "kind": "none" } },
-            { "text": "辊道", "action": { "kind": "none" } },
-            { "text": "AGV", "action": { "kind": "none" } },
-            { "text": "上一页", "action": { "kind": "up" } },
-            { "text": "下一页", "action": { "kind": "down" } },
-            { "text": "返回", "action": { "kind": "back" } }
+            {
+              "text": "型号选择",
+              "action": {
+                "kind": "none"
+              }
+            },
+            {
+              "text": "辊道",
+              "action": {
+                "kind": "none"
+              }
+            },
+            {
+              "text": "AGV",
+              "action": {
+                "kind": "none"
+              }
+            },
+            {
+              "text": "上一页",
+              "action": {
+                "kind": "up"
+              }
+            },
+            {
+              "text": "下一页",
+              "action": {
+                "kind": "down"
+              }
+            },
+            {
+              "text": "返回",
+              "action": {
+                "kind": "back"
+              }
+            }
           ]
         },
         {
@@ -81,37 +615,293 @@
             {
               "title": "上料道一",
               "rows": [
-                { "axis": "X轴", "position": { "register": "D201", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 }, "speed": { "register": "D202", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 10 } },
-                { "axis": "Y轴", "position": { "register": "D204", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 10000 }, "speed": { "register": "D205", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 1000 } },
-                { "axis": "Z轴", "position": { "register": "D201", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 }, "speed": { "register": "D202", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 10 } },
-                { "axis": "C轴", "position": { "register": "D204", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 10000 }, "speed": { "register": "D205", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 1000 } }
+                {
+                  "axis": "X轴",
+                  "position": {
+                    "register": "D201",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 1000
+                  },
+                  "speed": {
+                    "register": "D202",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 10
+                  }
+                },
+                {
+                  "axis": "Y轴",
+                  "position": {
+                    "register": "D204",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 10000
+                  },
+                  "speed": {
+                    "register": "D205",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 1000
+                  }
+                },
+                {
+                  "axis": "Z轴",
+                  "position": {
+                    "register": "D201",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 1000
+                  },
+                  "speed": {
+                    "register": "D202",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 10
+                  }
+                },
+                {
+                  "axis": "C轴",
+                  "position": {
+                    "register": "D204",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 10000
+                  },
+                  "speed": {
+                    "register": "D205",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 1000
+                  }
+                }
               ]
             },
             {
               "title": "上料道二",
               "rows": [
-                { "axis": "X轴", "position": { "register": "D201", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 }, "speed": { "register": "D202", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 10 } },
-                { "axis": "Y轴", "position": { "register": "D204", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 10000 }, "speed": { "register": "D205", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 1000 } },
-                { "axis": "Z轴", "position": { "register": "D201", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 }, "speed": { "register": "D202", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 10 } },
-                { "axis": "C轴", "position": { "register": "D204", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 10000 }, "speed": { "register": "D205", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 1000 } }
+                {
+                  "axis": "X轴",
+                  "position": {
+                    "register": "D201",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 1000
+                  },
+                  "speed": {
+                    "register": "D202",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 10
+                  }
+                },
+                {
+                  "axis": "Y轴",
+                  "position": {
+                    "register": "D204",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 10000
+                  },
+                  "speed": {
+                    "register": "D205",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 1000
+                  }
+                },
+                {
+                  "axis": "Z轴",
+                  "position": {
+                    "register": "D201",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 1000
+                  },
+                  "speed": {
+                    "register": "D202",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 10
+                  }
+                },
+                {
+                  "axis": "C轴",
+                  "position": {
+                    "register": "D204",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 10000
+                  },
+                  "speed": {
+                    "register": "D205",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 1000
+                  }
+                }
               ]
             },
             {
               "title": "上料道三",
               "rows": [
-                { "axis": "X轴", "position": { "register": "D201", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 }, "speed": { "register": "D202", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 10 } },
-                { "axis": "Y轴", "position": { "register": "D204", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 10000 }, "speed": { "register": "D205", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 1000 } },
-                { "axis": "Z轴", "position": { "register": "D201", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 }, "speed": { "register": "D202", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 10 } },
-                { "axis": "C轴", "position": { "register": "D204", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 10000 }, "speed": { "register": "D205", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 1000 } }
+                {
+                  "axis": "X轴",
+                  "position": {
+                    "register": "D201",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 1000
+                  },
+                  "speed": {
+                    "register": "D202",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 10
+                  }
+                },
+                {
+                  "axis": "Y轴",
+                  "position": {
+                    "register": "D204",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 10000
+                  },
+                  "speed": {
+                    "register": "D205",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 1000
+                  }
+                },
+                {
+                  "axis": "Z轴",
+                  "position": {
+                    "register": "D201",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 1000
+                  },
+                  "speed": {
+                    "register": "D202",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 10
+                  }
+                },
+                {
+                  "axis": "C轴",
+                  "position": {
+                    "register": "D204",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 10000
+                  },
+                  "speed": {
+                    "register": "D205",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 1000
+                  }
+                }
               ]
             },
             {
               "title": "上料道四",
               "rows": [
-                { "axis": "X轴", "position": { "register": "D201", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 }, "speed": { "register": "D202", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 10 } },
-                { "axis": "Y轴", "position": { "register": "D204", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 10000 }, "speed": { "register": "D205", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 1000 } },
-                { "axis": "Z轴", "position": { "register": "D201", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 }, "speed": { "register": "D202", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 10 } },
-                { "axis": "C轴", "position": { "register": "D204", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 10000 }, "speed": { "register": "D205", "label": "速度设定(M/S)", "unit": "M/S", "min": 0, "max": 1000 } }
+                {
+                  "axis": "X轴",
+                  "position": {
+                    "register": "D201",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 1000
+                  },
+                  "speed": {
+                    "register": "D202",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 10
+                  }
+                },
+                {
+                  "axis": "Y轴",
+                  "position": {
+                    "register": "D204",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 10000
+                  },
+                  "speed": {
+                    "register": "D205",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 1000
+                  }
+                },
+                {
+                  "axis": "Z轴",
+                  "position": {
+                    "register": "D201",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 1000
+                  },
+                  "speed": {
+                    "register": "D202",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 10
+                  }
+                },
+                {
+                  "axis": "C轴",
+                  "position": {
+                    "register": "D204",
+                    "label": "位置设定(M)",
+                    "unit": "mm",
+                    "min": 0,
+                    "max": 10000
+                  },
+                  "speed": {
+                    "register": "D205",
+                    "label": "速度设定(M/S)",
+                    "unit": "M/S",
+                    "min": 0,
+                    "max": 1000
+                  }
+                }
               ]
             }
           ]
@@ -119,10 +909,50 @@
         {
           "type": "commandBar",
           "buttons": [
-            { "text": "启动", "action": { "kind": "command", "writes": [ { "target": "Start" } ] } },
-            { "text": "停止", "action": { "kind": "command", "writes": [ { "target": "Stop" } ] } },
-            { "text": "复位", "action": { "kind": "command", "writes": [ { "target": "Reset" } ] } },
-            { "text": "急停", "action": { "kind": "command", "writes": [ { "target": "EStopRequest" } ] } }
+            {
+              "text": "启动",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "Start"
+                  }
+                ]
+              }
+            },
+            {
+              "text": "停止",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "Stop"
+                  }
+                ]
+              }
+            },
+            {
+              "text": "复位",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "Reset"
+                  }
+                ]
+              }
+            },
+            {
+              "text": "急停",
+              "action": {
+                "kind": "command",
+                "writes": [
+                  {
+                    "target": "EStopRequest"
+                  }
+                ]
+              }
+            }
           ]
         }
       ]
@@ -131,40 +961,65 @@
       "id": "overview",
       "title": "总览",
       "modules": [
-        { "type": "header" },
-        { "type": "pageHost", "hostedView": "OverviewView" }
+        {
+          "type": "header"
+        },
+        {
+          "type": "pageHost",
+          "hostedView": "OverviewView"
+        }
       ]
     },
     {
       "id": "operation",
       "title": "操作",
       "modules": [
-        { "type": "header" },
-        { "type": "pageHost", "hostedView": "OperationBar" }
+        {
+          "type": "header"
+        },
+        {
+          "type": "pageHost",
+          "hostedView": "OperationBar"
+        }
       ]
     },
     {
       "id": "parameters",
       "title": "参数",
       "modules": [
-        { "type": "header" },
-        { "type": "pageHost", "hostedView": "ParametersView" }
+        {
+          "type": "header"
+        },
+        {
+          "type": "pageHost",
+          "hostedView": "ParametersView"
+        }
       ]
     },
     {
       "id": "io-diagnostics",
       "title": "I/O 诊断",
       "modules": [
-        { "type": "header" },
-        { "type": "pageHost", "hostedView": "IoDiagnosticsView" }
+        {
+          "type": "header"
+        },
+        {
+          "type": "pageHost",
+          "hostedView": "IoDiagnosticsView"
+        }
       ]
     },
     {
       "id": "history",
       "title": "报警与历史",
       "modules": [
-        { "type": "header" },
-        { "type": "pageHost", "hostedView": "HistoryView" }
+        {
+          "type": "header"
+        },
+        {
+          "type": "pageHost",
+          "hostedView": "HistoryView"
+        }
       ]
     }
   ]

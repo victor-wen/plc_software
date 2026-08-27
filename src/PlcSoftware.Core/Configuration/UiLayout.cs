@@ -141,11 +141,19 @@ public sealed class UiAppDefinition
     /// <summary>The id of the page shown at startup; the first page is used when unset.</summary>
     public string? DefaultPage { get; set; }
 
+    /// <summary>True when every page except the sign-in page requires a successful sign-in
+    /// (navigation to another page is redirected to the sign-in page while signed out).
+    /// Defaults to true when <see cref="Users"/> is non-empty, false otherwise.</summary>
+    public bool? RequireLogin { get; set; }
+
     /// <summary>The optional sign-in credentials. Empty = the login form accepts anything (demo/simulation).</summary>
     public List<UiUserDefinition> Users { get; set; } = new();
 
     /// <summary>The action run after a successful sign-in (typically <c>navigate</c>).</summary>
     public UiActionDefinition? LoginSuccess { get; set; }
+
+    /// <summary>Effective sign-in gate: <see cref="RequireLogin"/> or, when unset, "any users configured".</summary>
+    public bool LoginRequired => RequireLogin ?? Users.Count > 0;
 }
 
 /// <summary>One allowed sign-in credential.</summary>
@@ -209,6 +217,9 @@ public sealed class UiModuleDefinition
     /// <summary>parameterGroup: the tables shown in the content region.</summary>
     public List<UiParameterGroupDefinition> Groups { get; set; } = new();
 
+    /// <summary>dashboard: the tiles of the board (home page 磁贴看板).</summary>
+    public List<UiTileDefinition> Tiles { get; set; } = new();
+
     /// <summary>pageHost: the name of the legacy page view to host (e.g. OverviewView).</summary>
     public string HostedView { get; set; } = string.Empty;
 
@@ -251,6 +262,23 @@ public sealed class UiModuleDefinition
                 }
 
                 break;
+            case UiModuleType.Dashboard:
+                if (Tiles.Count == 0)
+                {
+                    errors.Add("ui-layout: a dashboard module must declare at least one tile.");
+                }
+
+                var tileIds = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var tile in Tiles)
+                {
+                    errors.AddRange(tile.Validate());
+                    if (!tileIds.Add(tile.Id))
+                    {
+                        errors.Add($"ui-layout: duplicate tile id '{tile.Id}'.");
+                    }
+                }
+
+                break;
             case UiModuleType.PageHost:
                 if (string.IsNullOrWhiteSpace(HostedView))
                 {
@@ -287,6 +315,10 @@ public enum UiModuleType
 
     /// <summary>位置参数 tables (axis rows × position/speed fields).</summary>
     ParameterGroup,
+
+    /// <summary>Home dashboard (磁贴看板): a tile grid of buttons / live status / clock / text tiles
+    /// that the operator can edit (size, order, content) at runtime.</summary>
+    Dashboard,
 
     /// <summary>Hosts a legacy (hand-written XAML) page view by name.</summary>
     PageHost,
@@ -464,4 +496,119 @@ public sealed class UiParameterFieldDefinition
 
         return errors;
     }
+}
+
+/// <summary>
+/// One tile of a dashboard module (磁贴看板, design §7): a rectangular cell of the tile grid that is
+/// either a live <see cref="UiTileKind.Button"/> (runs its <see cref="Action"/>), a
+/// <see cref="UiTileKind.Status"/> cell (live shell state), a <see cref="UiTileKind.Clock"/>, a
+/// <see cref="UiTileKind.Text"/> annotation or a <see cref="UiTileKind.Navigate"/> shortcut.
+/// <see cref="Cols"/>x<see cref="Rows"/> is measured in grid columns/rows (default 2x2, 1..4 each);
+/// the operator can edit tiles at runtime (size, order and content) and the edits are persisted
+/// separately from ui-layout.json (see the App-layer dashboard tile store).
+/// </summary>
+public sealed class UiTileDefinition
+{
+    /// <summary>Unique tile id (edit persistence key).</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>The tile kind.</summary>
+    public UiTileKind Kind { get; set; } = UiTileKind.Button;
+
+    /// <summary>button/navigate: the tile caption. text: the annotation text.</summary>
+    public string Text { get; set; } = string.Empty;
+
+    /// <summary>button/navigate: the action executed on click (command writes or page navigation).</summary>
+    public UiActionDefinition? Action { get; set; }
+
+    /// <summary>status: which shell state the tile mirrors.</summary>
+    public UiTileStatus? Status { get; set; }
+
+    /// <summary>The tile width in grid columns (1..4, default 2).</summary>
+    public int Cols { get; set; } = 2;
+
+    /// <summary>The tile height in grid rows (1..4, default 2).</summary>
+    public int Rows { get; set; } = 2;
+
+    /// <summary>An optional ARGB hex color (e.g. #1E6FB8) overriding the default tile color; null = default.</summary>
+    public string? Color { get; set; }
+
+    internal List<string> Validate()
+    {
+        var errors = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(Id))
+        {
+            errors.Add("ui-layout: a dashboard tile has an empty id.");
+        }
+
+        if (Kind is UiTileKind.Button or UiTileKind.Navigate)
+        {
+            if (string.IsNullOrWhiteSpace(Text))
+            {
+                errors.Add($"ui-layout: tile '{Id}' ({Kind}) has an empty text.");
+            }
+
+            if (Action is null)
+            {
+                errors.Add($"ui-layout: tile '{Id}' ({Kind}) has no action.");
+            }
+            else if (Kind == UiTileKind.Navigate && Action.Kind != UiActionKind.Navigate)
+            {
+                errors.Add($"ui-layout: tile '{Id}' is a navigate tile whose action kind is '{Action.Kind}'.");
+            }
+        }
+        else if (Kind == UiTileKind.Status && Status is null)
+        {
+            errors.Add($"ui-layout: tile '{Id}' is a status tile without a status kind.");
+        }
+
+        if (Cols is < 1 or > 4 || Rows is < 1 or > 4)
+        {
+            errors.Add($"ui-layout: tile '{Id}' size must be within 1..4 (got {Cols}x{Rows}).");
+        }
+
+        return errors;
+    }
+}
+
+/// <summary>The tile kinds of a dashboard.</summary>
+public enum UiTileKind
+{
+    /// <summary>A button tile running a command action (host-command writes).</summary>
+    Button,
+
+    /// <summary>A live shell-state cell (connection/heartbeat/mode/run/fault/mask).</summary>
+    Status,
+
+    /// <summary>The current date/time.</summary>
+    Clock,
+
+    /// <summary>A static annotation text.</summary>
+    Text,
+
+    /// <summary>A shortcut tile navigating to another page.</summary>
+    Navigate,
+}
+
+/// <summary>The live shell states a status tile can mirror.</summary>
+public enum UiTileStatus
+{
+    /// <summary>串口 link state (在线/连接中/重连中/心跳丢失/离线).</summary>
+    Connection,
+
+    /// <summary>Heartbeat state (正常/丢失).</summary>
+    Heartbeat,
+
+    /// <summary>Machine mode (手动/自动/直通/未知).</summary>
+    Mode,
+
+    /// <summary>Run state (运行/停止).</summary>
+    Run,
+
+    /// <summary>Fault text (无故障 when clear).</summary>
+    Fault,
+
+    /// <summary>Bypass mask state (已屏蔽/正常).</summary>
+    Mask,
 }

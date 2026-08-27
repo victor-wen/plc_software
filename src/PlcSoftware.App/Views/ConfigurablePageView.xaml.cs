@@ -111,6 +111,13 @@ public partial class ConfigurablePageView : UserControl
             return BuildParameterGroups(vm);
         }
 
+        if (vm.Dashboard is not null)
+        {
+            var dashboardView = new DashboardView();
+            dashboardView.Apply(vm.Dashboard);
+            return dashboardView;
+        }
+
         if (vm.HasHostedView && HostedContent is not null)
         {
             return HostedContent;

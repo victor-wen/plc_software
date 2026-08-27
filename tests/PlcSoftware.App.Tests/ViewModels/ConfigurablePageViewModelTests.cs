@@ -168,6 +168,7 @@ public class ConfigurablePageViewModelTests
         vm.LoginConfirmCommand.Execute(null);
         Assert.True(vm.IsSignedIn);
         Assert.Null(vm.LoginError);
+        Assert.Equal("admin", nav.LastSignedInUser);
         Assert.Equal("position", nav.LastNavigate);
     }
 
@@ -230,12 +231,14 @@ public class ConfigurablePageViewModelTests
     {
         public string? LastNavigate { get; private set; }
         public string? LastKind { get; private set; }
+        public string? LastSignedInUser { get; private set; }
 
         public void Navigate(string pageId) { LastNavigate = pageId; LastKind = "navigate"; }
         public void NavigateDown() => LastKind = "down";
         public void NavigateUp() => LastKind = "up";
         public void NavigateBack() => LastKind = "back";
         public void ShowLogin() => LastKind = "login";
+        public void SignIn(string username) { LastSignedInUser = username; LastKind = "signin"; }
         public void SignOut() => LastKind = "logout";
     }
 
