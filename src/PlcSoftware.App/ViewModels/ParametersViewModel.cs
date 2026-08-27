@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PlcSoftware.Core.Abstractions;
@@ -75,6 +76,9 @@ public sealed partial class ParameterEditor : ObservableObject
     partial void OnPendingValueChanged(int value) => OnPropertyChanged(nameof(ConfirmationText));
 
     partial void OnIsPendingChanged(bool value) => OnPropertyChanged(nameof(ConfirmationText));
+
+    // Typing a new value invalidates the previous validation error (design §6.5: 输入即清空错误提示).
+    partial void OnInputTextChanged(string value) => Error = null;
 }
 
 /// <summary>
@@ -219,13 +223,22 @@ public sealed partial class ParametersViewModel : ObservableObject
         }
 
         // Range check against the configured limits (design §6.5: 写入前显示允许范围).
-        if (editor.Min.HasValue && editor.Max.HasValue && (value < editor.Min || value > editor.Max))
+        if (!editor.Min.HasValue || !editor.Max.HasValue)
+        {
+            // Refuse clearly here rather than deferring to the service (design §4.3:
+            // 上下限未配置或配置非法时禁止写入).
+            editor.Error = "未配置范围，禁止写入。";
+            return;
+        }
+
+        if (value < editor.Min || value > editor.Max)
         {
             editor.Error = $"超出允许范围 {editor.Min} ~ {editor.Max} {editor.Unit}。";
             return;
         }
 
         editor.Error = null;
+        editor.ResultText = null; // a fresh confirmation supersedes any previous read-back outcome.
         editor.PendingValue = value;
         editor.IsPending = true;
         _pendingEditor = editor;
@@ -251,6 +264,12 @@ public sealed partial class ParametersViewModel : ObservableObject
         {
             var result = await _service.WriteAsync(editor.Name, editor.PendingValue, cancellationToken);
             editor.ResultText = FormatWriteResult(result);
+        }
+        catch (OperationCanceledException)
+        {
+            // A cancellation must propagate (as ParameterService does) so the AsyncRelayCommand observes it
+            // instead of the generic catch turning it into a bogus "写入失败" result.
+            throw;
         }
         catch (Exception ex)
         {
@@ -326,20 +345,84 @@ public sealed partial class ParametersViewModel : ObservableObject
     }
 
     private static string FormatWriteResult(ParameterWriteResult result)
-        => result.Status switch
+    {
+        var message = LocalizeMessage(result.Message);
+        return result.Status switch
         {
             ParameterWriteStatus.Success => $"{result.Parameter}写入成功（已读回 {result.ReadBack}）",
-            ParameterWriteStatus.Rejected => string.IsNullOrEmpty(result.Message)
+            ParameterWriteStatus.Rejected => message.Length == 0
                 ? $"{result.Parameter}写入被拒绝"
-                : $"{result.Parameter}写入被拒绝：{result.Message}",
-            ParameterWriteStatus.Mismatch => string.IsNullOrEmpty(result.Message)
+                : $"{result.Parameter}写入被拒绝：{message}",
+            ParameterWriteStatus.Mismatch => message.Length == 0
                 ? $"{result.Parameter}写入不一致（已保留原值）"
-                : $"{result.Parameter}写入不一致：{result.Message}（已保留原值）",
-            ParameterWriteStatus.Unknown => string.IsNullOrEmpty(result.Message)
+                : $"{result.Parameter}写入不一致：{message}（已保留原值）",
+            ParameterWriteStatus.Unknown => message.Length == 0
                 ? $"{result.Parameter}写入结果未知（已保留原值）"
-                : $"{result.Parameter}写入结果未知：{result.Message}（已保留原值）",
+                : $"{result.Parameter}写入结果未知：{message}（已保留原值）",
             _ => string.Empty,
         };
+    }
+
+    /// <summary>
+    /// Maps the English feedback of the injected <see cref="ParameterService"/> (Rejected / Mismatch /
+    /// Unknown <see cref="ParameterWriteResult.Message"/>) onto the Chinese HMI (design §6.5: 结果反馈).
+    /// Known-fragment messages are translated; anything unrecognised (e.g. a transport exception) is kept
+    /// verbatim so diagnostics are never silently dropped.
+    /// </summary>
+    private static string LocalizeMessage(string? message)
+    {
+        if (string.IsNullOrEmpty(message))
+        {
+            return string.Empty;
+        }
+
+        // Values are interpolated into an English message, so match on the stable keyword and reformat.
+        var range = Regex.Match(message,
+            @"value (?<value>-?\d+) is outside the configured range \[(?<min>-?\d+)\.\.(?<max>-?\d+)\]");
+        if (range.Success)
+        {
+            return $"数值 {range.Groups["value"].Value} 超出允许范围 {range.Groups["min"].Value} ~ {range.Groups["max"].Value}。";
+        }
+
+        var mismatch = Regex.Match(message,
+            @"read-back (?<readback>-?\d+) does not match written value (?<value>-?\d+)");
+        if (mismatch.Success)
+        {
+            return $"读回值 {mismatch.Groups["readback"].Value} 与写入值 {mismatch.Groups["value"].Value} 不一致。";
+        }
+
+        if (message.Contains("link offline", StringComparison.Ordinal))
+        {
+            return "通信离线，禁止写入。";
+        }
+
+        if (message.Contains("min and max must both be configured", StringComparison.Ordinal))
+        {
+            return "参数上下限未配置，禁止写入。";
+        }
+
+        if (message.Contains("min must be less than or equal to max", StringComparison.Ordinal))
+        {
+            return "参数上下限配置非法（下限不能大于上限）。";
+        }
+
+        if (message.Contains("read-only or unknown parameter address", StringComparison.Ordinal))
+        {
+            return "只读或未知参数地址，禁止写入。";
+        }
+
+        if (message.Contains("cannot be written to a 16-bit register", StringComparison.Ordinal))
+        {
+            return "数值超出16位寄存器可写范围。";
+        }
+
+        if (message.Contains("read-back returned an empty register array", StringComparison.Ordinal))
+        {
+            return "读回为空，无法确认写入结果。";
+        }
+
+        return message;
+    }
 
     private static int? ReadInt(IReadOnlyDictionary<string, object?> values, string key)
         => values.TryGetValue(key, out var value)
@@ -347,7 +430,7 @@ public sealed partial class ParametersViewModel : ObservableObject
             {
                 ushort u => u,
                 int i => i,
-                uint ui => (int)ui,
+                uint ui => ui <= int.MaxValue ? (int)ui : int.MaxValue, // clamp, never wrap.
                 short s => s,
                 byte b => b,
                 _ => null,

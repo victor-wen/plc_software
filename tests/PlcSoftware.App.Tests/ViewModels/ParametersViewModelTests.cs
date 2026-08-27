@@ -93,6 +93,41 @@ public class ParametersViewModelTests
         Assert.Equal("100 ~ 1500 mm", vm.WritableParameters[1].RangeHintText);
     }
 
+    [Fact]
+    public void Unconfigured_range_is_refused_clearly_at_prepare_write()
+    {
+        // A definition with no configured Min/Max (工程配置上下限未配置) is refused at the VM (design §4.3:
+        // 上下限未配置或配置非法时禁止写入) — clearer than deferring it to the injected service.
+        var gate = new FakeGate { IsOnline = true };
+        var client = new FakeModbusClient();
+        var definitions = new[] { Def("D201", 101, "Hz", null, null) };
+        var vm = new ParametersViewModel(new ParameterService(client, gate, definitions), gate, definitions);
+        vm.ApplyConnectionState(ConnectionState.Online);
+        var d201 = vm.WritableParameters[0];
+        d201.InputText = "300";
+
+        vm.PrepareWriteCommand.Execute(d201);
+
+        Assert.Contains("未配置范围", d201.Error);
+        Assert.False(d201.IsPending);
+        Assert.False(vm.IsPending);
+        Assert.Empty(client.Writes); // nothing reached the client.
+    }
+
+    [Fact]
+    public void Editing_the_input_clears_the_previous_validation_error()
+    {
+        var (_, _, vm) = Build();
+        var d201 = vm.WritableParameters[0];
+        d201.InputText = "abc";
+        vm.PrepareWriteCommand.Execute(d201);
+        Assert.Equal("请输入整数。", d201.Error);
+
+        // Re-typing a value clears the stale error (design §6.5: 输入即清空错误提示).
+        d201.InputText = "100";
+        Assert.Null(d201.Error);
+    }
+
     // --- Confirmation prompt (design §6.5: 写入前显示旧值、新值、单位和允许范围) --------------------------
 
     [Fact]
@@ -153,6 +188,25 @@ public class ParametersViewModelTests
     }
 
     [Fact]
+    public async Task Staging_a_new_confirmation_clears_a_previous_result()
+    {
+        var (_, _, vm) = Build();
+        var d201 = vm.WritableParameters[0];
+        vm.ApplySnapshot(LiveSnapshot());
+        d201.InputText = "300";
+        vm.PrepareWriteCommand.Execute(d201);
+        await vm.ConfirmWriteCommand.ExecuteAsync(null);
+        Assert.Contains("成功", d201.ResultText);
+
+        // A new valid value stages a fresh confirmation, neutralising the previous read-back outcome.
+        d201.InputText = "350";
+        vm.PrepareWriteCommand.Execute(d201);
+
+        Assert.Null(d201.ResultText);
+        Assert.True(d201.IsPending);
+    }
+
+    [Fact]
     public async Task Confirm_write_read_back_mismatch_reports_mismatch_and_keeps_original()
     {
         var (_, client, vm) = Build();
@@ -194,19 +248,38 @@ public class ParametersViewModelTests
     {
         var (gate, _, vm) = Build();
         var d201 = vm.WritableParameters[0];
+        vm.ApplySnapshot(LiveSnapshot()); // D201 old value = 250 (retained on a failed write).
         d201.InputText = "300";
         vm.PrepareWriteCommand.Execute(d201);
         Assert.True(d201.IsPending);
 
         // The link drops between staging and confirming; the service enforces §5.3 (禁止写入) even though the
-        // UI gate would have disabled the confirm button.
+        // UI gate would have disabled the confirm button. The English service reason is localised for the HMI.
         gate.IsOnline = false;
 
         await vm.ConfirmWriteCommand.ExecuteAsync(null);
 
         Assert.Contains("被拒绝", d201.ResultText);
-        Assert.Contains("link offline", d201.ResultText);
+        Assert.Contains("通信离线", d201.ResultText);
+        Assert.Equal(250, d201.OldValue); // the original (snapshot) value survives the failed write.
         Assert.False(vm.IsPending);
+    }
+
+    [Fact]
+    public void Confirm_write_disabled_when_the_link_drops_after_staging()
+    {
+        var (gate, _, vm) = Build();
+        var d201 = vm.WritableParameters[0];
+        d201.InputText = "300";
+        vm.PrepareWriteCommand.Execute(d201);
+        Assert.True(vm.ConfirmWriteCommand.CanExecute(null));
+
+        // The link drops between staging and confirming; ApplyConnectionState re-queries the confirm
+        // command's CanExecute, so the visible confirm button is disabled (design §5.3: 断线禁止写入).
+        gate.IsOnline = false;
+        vm.ApplyConnectionState(ConnectionState.Disconnected);
+
+        Assert.False(vm.ConfirmWriteCommand.CanExecute(null));
     }
 
     // --- Save-in-progress prevents duplicate clicks (design §6.5 IsSaving guard) ---------------------
@@ -298,6 +371,10 @@ public class ParametersViewModelTests
         };
 
     private static ParameterDefinition Def(string name, ushort address, string unit, int min, int max)
+        => new() { Name = name, Address = address, Unit = unit, Min = min, Max = max };
+
+    /// <summary>Definition with a nullable range, used to pin the 未配置范围 refusal at the VM.</summary>
+    private static ParameterDefinition Def(string name, ushort address, string unit, int? min, int? max)
         => new() { Name = name, Address = address, Unit = unit, Min = min, Max = max };
 
     /// <summary>Read-only <see cref="ICommandGate"/> the tests control directly.</summary>
