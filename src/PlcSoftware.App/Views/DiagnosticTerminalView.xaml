@@ -180,6 +180,25 @@
                         <Button Content="写线圈 (FC05)" Style="{StaticResource ActionButtonStyle}" Command="{Binding WriteCoilCommand}" />
                         <Button Content="写寄存器 (FC06)" Style="{StaticResource ActionButtonStyle}" Command="{Binding WriteRegisterCommand}" />
                     </StackPanel>
+                    <!-- Per-write confirmation (design §6.9 每次写入确认): shown once a write is staged. -->
+                    <StackPanel Orientation="Horizontal"
+                                Margin="4,8,4,0"
+                                Visibility="{Binding IsPending, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock Text="{Binding ConfirmationText}"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource StatusWarnBrush}"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="Wrap" />
+                        <Button Content="确认"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Margin="12,0,0,0"
+                                Command="{Binding ConfirmWriteCommand}" />
+                        <Button Content="取消"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Margin="8,0,0,0"
+                                Command="{Binding CancelWriteCommand}" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

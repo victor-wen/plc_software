@@ -15,11 +15,16 @@ namespace PlcSoftware.App.Tests.ViewModels;
 /// <see cref="DiagnosticTerminalViewModel.StatusText"/>/<see cref="DiagnosticTerminalViewModel.ErrorText"/>
 /// without reaching the client; a valid read routes to the service and surfaces the hex/elapsed on success.</para>
 ///
-/// <para><b>Writes (locked + stop-gated).</b> <see cref="DiagnosticTerminalViewModel.WriteRegisterCommand"/> /
+/// <para><b>Writes (locked + stop-gated + per-write confirmation, design §6.9).</b>
+/// <see cref="DiagnosticTerminalViewModel.WriteRegisterCommand"/> /
 /// <see cref="DiagnosticTerminalViewModel.WriteCoilCommand"/> open only while the terminal is unlocked AND the
-/// link is online (<see cref="DiagnosticTerminalViewModel.IsOnline"/>), so a locked terminal (or a machine that
-/// is running, via the service's <c>isRunningProvider</c>) rejects the write and reports the reason — never
-/// throws.</para>
+/// link is online (<see cref="DiagnosticTerminalViewModel.IsOnline"/>). They now only <em>stage</em> a write:
+/// the input is validated and the operation is set pending (<see cref="DiagnosticTerminalViewModel.IsPending"/> +
+/// <see cref="DiagnosticTerminalViewModel.ConfirmationText"/>) without reaching the client. The write runs only
+/// after the operator confirms via <see cref="DiagnosticTerminalViewModel.ConfirmWriteCommand"/>, and a pending
+/// write is dropped via <see cref="DiagnosticTerminalViewModel.CancelWriteCommand"/>. A locked terminal (or a
+/// machine that is running, via the service's <c>isRunningProvider</c>) rejects the write and reports the
+/// reason — never throws.</para>
 ///
 /// <para><b>No WPF dependency.</b> The view model consumes <see cref="ConnectionState"/> through
 /// <see cref="DiagnosticTerminalViewModel.ApplyConnectionState"/> and executes everything through the injected
@@ -80,15 +85,108 @@ public class DiagnosticTerminalViewModelTests
         Assert.Contains("已锁定", vm.StatusText);
     }
 
+    // --- Per-write confirmation (design §6.9 每次写入确认) -----------------------------------------
+
+    [Fact]
+    public void Staging_a_register_write_sets_pending_without_writing()
+    {
+        var (_, client, vm) = Build();
+        vm.Value = "250";
+
+        vm.WriteRegisterCommand.Execute(null);
+
+        Assert.True(vm.IsPending);
+        Assert.NotNull(vm.ConfirmationText);
+        Assert.Contains("FC06", vm.ConfirmationText);
+        Assert.Contains("从站1", vm.ConfirmationText);
+        Assert.Contains("地址0", vm.ConfirmationText);
+        Assert.Contains("值250", vm.ConfirmationText);
+        Assert.Empty(client.Writes); // no write ran at stage time.
+    }
+
+    [Fact]
+    public void Staging_a_coil_write_sets_pending_without_writing()
+    {
+        var (_, client, vm) = Build();
+        vm.Value = "true";
+
+        vm.WriteCoilCommand.Execute(null);
+
+        Assert.True(vm.IsPending);
+        Assert.NotNull(vm.ConfirmationText);
+        Assert.Contains("FC05", vm.ConfirmationText);
+        Assert.Empty(client.Writes);
+    }
+
+    [Fact]
+    public async Task Confirm_write_runs_the_registered_write()
+    {
+        var (_, client, vm) = Build();
+        vm.Value = "250";
+        vm.WriteRegisterCommand.Execute(null);
+        Assert.True(vm.IsPending);
+
+        await vm.ConfirmWriteCommand.ExecuteAsync(null);
+
+        Assert.Equal((ushort)250, client.Writes.Single().Value);
+        Assert.False(vm.IsPending);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task Confirm_coil_write_runs_the_coil_write()
+    {
+        var (_, client, vm) = Build();
+        vm.Value = "true";
+        vm.WriteCoilCommand.Execute(null);
+
+        await vm.ConfirmWriteCommand.ExecuteAsync(null);
+
+        Assert.Single(client.Writes);
+        Assert.False(vm.IsPending);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public void Cancel_clears_pending_without_writing()
+    {
+        var (_, client, vm) = Build();
+        vm.Value = "250";
+        vm.WriteRegisterCommand.Execute(null);
+        Assert.True(vm.IsPending);
+
+        vm.CancelWriteCommand.Execute(null);
+
+        Assert.False(vm.IsPending);
+        Assert.Null(vm.ConfirmationText);
+        Assert.Empty(client.Writes);
+    }
+
+    [Fact]
+    public void Editing_a_new_value_while_pending_replaces_the_confirmation()
+    {
+        var (_, _, vm) = Build();
+        vm.Value = "250";
+        vm.WriteRegisterCommand.Execute(null);
+        Assert.Contains("值250", vm.ConfirmationText);
+
+        vm.Value = "300";
+        vm.WriteRegisterCommand.Execute(null);
+
+        Assert.Contains("值300", vm.ConfirmationText);
+        Assert.True(vm.IsPending);
+    }
+
     // --- Running machine rejects a write (design §6.5: 机器运行时禁止写入) ---------------------------
 
     [Fact]
-    public async Task Write_while_machine_running_is_rejected_through_the_service()
+    public async Task Confirm_write_while_machine_running_is_rejected_through_the_service()
     {
         // The gate reports online + unlocked; the service's running provider rejects the write.
         var (_, _, vm) = Build(online: true, unlocked: true, isRunning: () => true);
+        vm.WriteRegisterCommand.Execute(null);
 
-        await vm.WriteRegisterCommand.ExecuteAsync(null);
+        await vm.ConfirmWriteCommand.ExecuteAsync(null);
 
         Assert.False(vm.IsBusy);
         Assert.Contains("失败", vm.StatusText);
@@ -175,14 +273,15 @@ public class DiagnosticTerminalViewModelTests
     }
 
     [Fact]
-    public async Task Invalid_write_value_is_reported_without_a_write()
+    public void Invalid_write_value_is_reported_without_staging_a_write()
     {
         var (_, client, vm) = Build();
         vm.Value = "not-a-number";
 
-        await vm.WriteRegisterCommand.ExecuteAsync(null);
+        vm.WriteRegisterCommand.Execute(null);
 
         Assert.Contains("寄存器值", vm.ErrorText);
+        Assert.False(vm.IsPending);
         Assert.Empty(client.Writes);
     }
 

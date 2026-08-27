@@ -30,13 +30,24 @@ public sealed class TerminalReadChoice
 /// registers, FC04 input registers. Writes (FC05 coil / FC06 register) are separate commands, not
 /// part of the read selector.
 /// </summary>
-public enum TerminalReadFunction
-{
-    Coils,
-    Discrete,
-    Holding,
-    Input,
-}
+    public enum TerminalReadFunction
+    {
+        Coils,
+        Discrete,
+        Holding,
+        Input,
+    }
+
+    /// <summary>
+    /// The write operation staged for the operator's confirmation: a FC06 register write or a FC05 coil
+    /// write. The pending kind is kept so <see cref="DiagnosticTerminalViewModel.ConfirmWriteCommand"/>
+    /// knows which <see cref="DiagnosticTerminalService"/> method to run.
+    /// </summary>
+    public enum TerminalWriteKind
+    {
+        Register,
+        Coil,
+    }
 
 /// <summary>
 /// The structured Modbus debug terminal page (design §6.5): FC01/02/03/04 reads and FC05/06 single-point
@@ -47,11 +58,15 @@ public enum TerminalReadFunction
 /// (结果反馈: HexResult + ElapsedMs), and any transport/bounds failure lands on <see cref="StatusText"/> /
 /// <see cref="ErrorText"/> — nothing is ever thrown to the UI thread.</para>
 ///
-/// <para><b>Writes (locked + stop-gated).</b> FC05/FC06 writes are permitted only while the terminal is
-/// unlocked (<see cref="IsUnlocked"/>) and, downstream, while the machine is not running (the service's
-/// injected <c>isRunningProvider</c>). <see cref="UnlockCommand"/> grants the 5-minute write unlock (the
-/// service auto-locks; a write refused by the lock or the running guard surfaces on <see cref="StatusText"/>).
-/// The write commands additionally require the link to be <see cref="IsOnline"/> (design §5.3 断线禁止写入).</para>
+/// <para><b>Writes (locked + stop-gated + per-write confirmation).</b> FC05/FC06 writes are permitted only
+/// while the terminal is unlocked (<see cref="IsUnlocked"/>) and, downstream, while the machine is not
+/// running (the service's injected <c>isRunningProvider</c>). <see cref="UnlockCommand"/> grants the
+/// 5-minute write unlock (the service auto-locks; a write refused by the lock or the running guard surfaces
+/// on <see cref="StatusText"/>). The write commands additionally require the link to be <see cref="IsOnline"/>
+/// (design §5.3 断线禁止写入). <see cref="WriteRegisterCommand"/> / <see cref="WriteCoilCommand"/> now only
+/// <em>stage</em> a write (validate → set <see cref="IsPending"/> and <see cref="ConfirmationText"/>); the
+/// actual write runs only after the operator confirms via <see cref="ConfirmWriteCommand"/> (design §6.9
+/// 每次写入确认). <see cref="CancelWriteCommand"/> drops a staged write without sending it.</para>
 ///
 /// <para><b>No UI-thread dependency.</b> The view model consumes Core state through
 /// <see cref="ApplyConnectionState"/> and executes everything through the injected
@@ -89,6 +104,13 @@ public sealed partial class DiagnosticTerminalViewModel : ObservableObject
     /// <summary>The value being written (FC05 bool / FC06 ushort) the operator typed.</summary>
     [ObservableProperty]
     private string _value = "0";
+
+    /// <summary>True while a staged write is awaiting the operator's confirmation (design §6.9 每次写入确认).</summary>
+    [ObservableProperty]
+    private bool _isPending;
+
+    /// <summary>The staged raw write inputs re-parsed when the operator confirms.</summary>
+    private TerminalWriteKind? _pendingWriteKind;
 
     /// <summary>The selected read function (default 读取保持寄存器 FC03).</summary>
     [ObservableProperty]
@@ -138,6 +160,15 @@ public sealed partial class DiagnosticTerminalViewModel : ObservableObject
     /// <summary>True when the link is Online and host writes are permitted (design §5.3).</summary>
     public bool IsOnline => _gate.IsOnline;
 
+    /// <summary>The per-write confirmation prompt (design §6.9 每次写入确认): the FC code, slave, address and
+    /// value being written, e.g. "确认写入 FC06 保持寄存器 从站1 地址100 值250?". Null while nothing is pending.</summary>
+    public string? ConfirmationText => _pendingWriteKind switch
+    {
+        TerminalWriteKind.Register => $"确认写入 FC06 保持寄存器 从站{SlaveId} 地址{Address} 值{Value}?",
+        TerminalWriteKind.Coil => $"确认写入 FC05 线圈 从站{SlaveId} 地址{Address} 值{Value}?",
+        _ => null,
+    };
+
     /// <summary>Human-readable link text (在线 / 离线 / …) for the terminal-page header.</summary>
     public string ConnectionStatusText => ConnectionState switch
     {
@@ -155,6 +186,7 @@ public sealed partial class DiagnosticTerminalViewModel : ObservableObject
         _service.SetUnlocked(value);
         WriteRegisterCommand.NotifyCanExecuteChanged();
         WriteCoilCommand.NotifyCanExecuteChanged();
+        ConfirmWriteCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsBusyChanged(bool value)
@@ -162,6 +194,15 @@ public sealed partial class DiagnosticTerminalViewModel : ObservableObject
         RunReadCommand.NotifyCanExecuteChanged();
         WriteRegisterCommand.NotifyCanExecuteChanged();
         WriteCoilCommand.NotifyCanExecuteChanged();
+        ConfirmWriteCommand.NotifyCanExecuteChanged();
+        CancelWriteCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnIsPendingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ConfirmationText));
+        ConfirmWriteCommand.NotifyCanExecuteChanged();
+        CancelWriteCommand.NotifyCanExecuteChanged();
     }
 
     // --- Unlock / lock (design §6.5: 解锁后才允许写入，5 分钟自动锁定) -----------------------------------
@@ -209,37 +250,92 @@ public sealed partial class DiagnosticTerminalViewModel : ObservableObject
 
     private bool CanRead() => !IsBusy;
 
-    // --- Write (locked + stop-gated) ---------------------------------------------------------------
+    // --- Write (locked + stop-gated + per-write confirmation, design §6.9) --------------------------
 
-    /// <summary>Writes a single holding register (FC06). Requires the unlock and the machine not running.</summary>
+    /// <summary>Stages a holding-register (FC06) write: validates the input, then shows the confirmation
+    /// prompt instead of writing (design §6.9 每次写入确认).</summary>
     [RelayCommand(CanExecute = nameof(CanWrite))]
-    private async Task WriteRegisterAsync(CancellationToken cancellationToken)
+    private void WriteRegister()
     {
-        if (!TryParseWriteInputs(out var slaveId, out var address, out var value))
+        if (!TryParseWriteInputs(out _, out _, out _))
         {
             return;
         }
 
-        await ExecuteAsync(cancellationToken,
-            token => _service.WriteRegister(slaveId, address, value, token),
-            "写入成功");
+        _pendingWriteKind = TerminalWriteKind.Register;
+        IsPending = true;
+        StatusText = string.Empty;
+        ErrorText = null;
     }
 
-    /// <summary>Writes a single coil (FC05). Requires the unlock and the machine not running.</summary>
+    /// <summary>Stages a coil (FC05) write: validates the input, then shows the confirmation prompt
+    /// instead of writing (design §6.9 每次写入确认).</summary>
     [RelayCommand(CanExecute = nameof(CanWrite))]
-    private async Task WriteCoilAsync(CancellationToken cancellationToken)
+    private void WriteCoil()
     {
-        if (!TryParseCoilInputs(out var slaveId, out var address, out var value))
+        if (!TryParseCoilInputs(out _, out _, out _))
         {
             return;
         }
 
-        await ExecuteAsync(cancellationToken,
-            token => _service.WriteCoil(slaveId, address, value, token),
-            "写入成功");
+        _pendingWriteKind = TerminalWriteKind.Coil;
+        IsPending = true;
+        StatusText = string.Empty;
+        ErrorText = null;
     }
 
     private bool CanWrite() => IsOnline && IsUnlocked && !IsBusy;
+
+    /// <summary>Confirms the staged write and runs it against the service (FC06 register / FC05 coil).</summary>
+    [RelayCommand(CanExecute = nameof(CanConfirmWrite))]
+    private async Task ConfirmWriteAsync(CancellationToken cancellationToken)
+    {
+        if (_pendingWriteKind is not TerminalWriteKind kind)
+        {
+            return;
+        }
+
+        if (kind == TerminalWriteKind.Coil)
+        {
+            if (!TryParseCoilInputs(out var slaveId, out var address, out var value))
+            {
+                ClearPending();
+                return;
+            }
+
+            await ExecuteAsync(cancellationToken,
+                token => _service.WriteCoil(slaveId, address, value, token),
+                "写入成功");
+        }
+        else
+        {
+            if (!TryParseWriteInputs(out var slaveId, out var address, out var value))
+            {
+                ClearPending();
+                return;
+            }
+
+            await ExecuteAsync(cancellationToken,
+                token => _service.WriteRegister(slaveId, address, value, token),
+                "写入成功");
+        }
+
+        ClearPending();
+    }
+
+    private bool CanConfirmWrite() => IsOnline && IsUnlocked && !IsBusy && IsPending;
+
+    /// <summary>Drops a staged write without sending it.</summary>
+    [RelayCommand(CanExecute = nameof(CanCancelWrite))]
+    private void CancelWrite() => ClearPending();
+
+    private bool CanCancelWrite() => IsPending && !IsBusy;
+
+    private void ClearPending()
+    {
+        _pendingWriteKind = null;
+        IsPending = false;
+    }
 
     // --- State application (composition-root wired) --------------------------------------------------
 
@@ -251,6 +347,7 @@ public sealed partial class DiagnosticTerminalViewModel : ObservableObject
         OnPropertyChanged(nameof(IsOnline));
         WriteRegisterCommand.NotifyCanExecuteChanged();
         WriteCoilCommand.NotifyCanExecuteChanged();
+        ConfirmWriteCommand.NotifyCanExecuteChanged();
     }
 
     private static string StateUnlockedText =>
