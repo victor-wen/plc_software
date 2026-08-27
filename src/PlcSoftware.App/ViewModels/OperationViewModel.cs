@@ -35,10 +35,12 @@ namespace PlcSoftware.App.ViewModels;
 /// combo (手动 M104=0,M105=0 / 自动 M104=1,M105=0 / 直通 M104=0,M105=1) and then waits for the PLC to report
 /// the final mode back on M1/M2/M13. The UI never trusts a single write result: the writes only set
 /// <see cref="PendingMode"/>; the displayed <see cref="Mode"/> and the "switched" state change only once a
-/// snapshot confirms M1/M2/M13. A confirmed mode that matches the request clears the pending flag (switch
-/// took); a confirmed mode that differs also clears it (the PLC refused — nothing is in flight). An
-/// <see cref="MachineMode.Unknown"/> snapshot (no mode bit) keeps the pending flag so a switch still in
-/// flight is not cleared by a transient partial read.</para>
+/// snapshot confirms M1/M2/M13. Because snapshots are polled at a ~250ms cadence, a snapshot arriving right
+/// after a write may be a <em>pre-write</em> stale read, so a pending switch is cleared as a <em>success</em>
+/// only when the confirmed mode matches the request, and as a <em>refusal</em> only when a concrete mode
+/// that differs from the request is confirmed by a snapshot at least one poll cycle (500ms) newer than the
+/// write completion. An <see cref="MachineMode.Unknown"/> snapshot (no mode bit) always keeps the pending
+/// flag so a switch still in flight is not dropped by a transient partial read.</para>
 ///
 /// <para><b>软件急停请求.</b> <see cref="EStopRequestText"/> / <see cref="EStopRequestHint"/> make it
 /// explicit that M100 is a <em>software</em> request only — never a physical e-stop button — so the
@@ -48,6 +50,18 @@ public sealed partial class OperationViewModel : ObservableObject
 {
     private readonly ICommandService _commandService;
     private readonly ICommandGate _gate;
+
+    /// <summary>
+    /// The confirmation window for a pending mode switch (design §4.4). Snapshots are polled at a ~250ms
+    /// cadence, so a concrete mode snapshot is only trusted as a <em>refusal</em> once it is at least one
+    /// poll cycle (500ms) newer than the write completion. A snapshot inside this window that still reports
+    /// the old mode can be a pre-write stale read — the switch may still be in flight, so pending is kept.
+    /// </summary>
+    private static readonly TimeSpan ModeConfirmationWindow = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>The UTC time the mutually-exclusive M104/M105 write pair completed (used to arbitrate a
+    /// pending switch against snapshot age). Null while no mode switch is pending.</summary>
+    private DateTime? _pendingModeSetAt;
 
     /// <summary>The PLC-confirmed machine mode, echoed on M1/M2/M13 (design §4.4).</summary>
     [ObservableProperty]
@@ -130,7 +144,7 @@ public sealed partial class OperationViewModel : ObservableObject
 
     [RelayCommand(CanExecute = nameof(CanEStopRequest))]
     private async Task EStopRequestAsync(CancellationToken cancellationToken)
-        => await SendPulseAsync(CommandTarget.EStopRequest, "急停", cancellationToken);
+        => await SendPulseAsync(CommandTarget.EStopRequest, "急停", cancellationToken, noun: "请求");
 
     [RelayCommand(CanExecute = nameof(CanAutoMode))]
     private async Task AutoModeAsync(CancellationToken cancellationToken)
@@ -157,11 +171,11 @@ public sealed partial class OperationViewModel : ObservableObject
 
     private bool CanEStopRequest() => IsOnline;
 
-    private bool CanAutoMode() => IsOnline && !IsRunning && !HasFault;
+    private bool CanAutoMode() => IsOnline && !IsRunning && !HasFault && !IsModeSwitchPending;
 
-    private bool CanBypassMode() => IsOnline && !IsRunning && !HasFault;
+    private bool CanBypassMode() => IsOnline && !IsRunning && !HasFault && !IsModeSwitchPending;
 
-    private bool CanManualMode() => IsOnline && !IsRunning;
+    private bool CanManualMode() => IsOnline && !IsRunning && !IsModeSwitchPending;
 
     // --- State application (composition-root wired) -----------------------------------------------
 
@@ -209,61 +223,122 @@ public sealed partial class OperationViewModel : ObservableObject
         IsRunning = ReadBool(values, "M3");
         HasFault = (ReadInt(values, "D110") ?? 0) != 0;
 
-        // Resolve a pending mode switch against the PLC's confirmed mode (design §4.4). A concrete mode
-        // means the request either took (Mode == PendingMode) or was refused (Mode != PendingMode) — either
-        // way nothing is in flight. An Unknown snapshot keeps pending so an in-flight switch is not dropped
-        // by a transient partial read.
-        if (PendingMode is not null && Mode != MachineMode.Unknown)
+        // Resolve a pending mode switch against the PLC's confirmed mode (design §4.4). A confirmed mode
+        // that matches the request is a success (the switch took). A confirmed mode that differs is a refusal
+        // ONLY once a snapshot at least one poll cycle (500ms) newer than the write completion confirms it —
+        // a snapshot inside that window may be a pre-write stale read at the 250ms poll cadence, so pending is
+        // kept (the switch is still in flight). An Unknown snapshot always keeps pending.
+        if (PendingMode is MachineMode requested)
         {
-            PendingMode = null;
+            if (Mode == requested)
+            {
+                PendingMode = null;
+                _pendingModeSetAt = null;
+                CommandFeedbackText = $"{ModeSwitchLabel(requested)}模式已切换成功";
+            }
+            else if (Mode != MachineMode.Unknown
+                     && _pendingModeSetAt is DateTime writeCompleted
+                     && snapshot.Timestamp - writeCompleted >= ModeConfirmationWindow)
+            {
+                PendingMode = null;
+                _pendingModeSetAt = null;
+                CommandFeedbackText = $"{ModeSwitchLabel(requested)}模式切换被拒绝";
+            }
         }
     }
 
     // --- Command execution helpers ---------------------------------------------------------------
 
-    private async Task SendPulseAsync(CommandTarget target, string label, CancellationToken cancellationToken)
+    private async Task SendPulseAsync(CommandTarget target, string label, CancellationToken cancellationToken, string noun = "命令")
     {
-        var result = await _commandService.ExecuteAsync(new CommandRequest(target), cancellationToken);
-        CommandFeedbackText = FormatFeedback(label, result);
+        try
+        {
+            var result = await _commandService.ExecuteAsync(new CommandRequest(target), cancellationToken);
+            CommandFeedbackText = FormatFeedback(label, result, noun);
+        }
+        catch (Exception ex)
+        {
+            // A transport/command failure must never escape to the AsyncRelayCommand (it would surface on the
+            // UI thread): report it on the feedback line instead and keep the UI alive.
+            CommandFeedbackText = $"命令失败：{ex.Message}";
+        }
     }
 
-    /// <summary>Composes the mutually-exclusive M104/M105 mode write (design §4.4) and pends the requested
-    /// mode only when both writes succeed; a non-success outcome (offline/unknown) reports feedback and
-    /// leaves no pending mode, because the switch cannot be confirmed.</summary>
+    /// <summary>Composes the mutually-exclusive M104/M105 mode write (design §4.4). The requested mode is
+    /// pended immediately so the other mode buttons are disabled while the pair is in flight, then resolved by
+    /// the snapshot read-back in <see cref="ApplySnapshot"/>. Both writes succeed → confirmed by the PLC; the
+    /// first write lands and the second is <see cref="CommandStatus.Unknown"/> → the combo may have
+    /// half-applied, so the requested mode is still pended (best-effort; snapshot arbitration resolves it). A
+    /// failure of the first write (or an explicit rejection) leaves nothing pending because no combo took.</summary>
     private async Task SendModeAsync(
         CommandTarget primary, bool primaryValue,
         CommandTarget secondary, bool secondaryValue,
         string label, MachineMode requested,
         CancellationToken cancellationToken)
     {
-        var first = await _commandService.ExecuteAsync(new CommandRequest(primary, primaryValue), cancellationToken);
-        var second = await _commandService.ExecuteAsync(new CommandRequest(secondary, secondaryValue), cancellationToken);
+        // Pend up-front: the M104/M105 pair is one mutually-exclusive combo, so a second mode switch must not
+        // interleave with the one in flight (design §6.3). CanExecute re-queries PendingMode immediately.
+        PendingMode = requested;
 
-        if (first.Status == CommandStatus.Success && second.Status == CommandStatus.Success)
+        try
         {
-            PendingMode = requested;
-            CommandFeedbackText = $"{label}模式已请求，等待PLC确认";
+            var first = await _commandService.ExecuteAsync(new CommandRequest(primary, primaryValue), cancellationToken);
+            var second = await _commandService.ExecuteAsync(new CommandRequest(secondary, secondaryValue), cancellationToken);
+
+            if (first.Status == CommandStatus.Success && second.Status == CommandStatus.Success)
+            {
+                _pendingModeSetAt = DateTime.UtcNow;
+                CommandFeedbackText = $"{label}模式已请求，等待PLC确认";
+            }
+            else if (first.Status == CommandStatus.Success && second.Status == CommandStatus.Unknown)
+            {
+                // Partial combo (best-effort): the primary holding write landed but the secondary outcome is
+                // unknown. The switch may still have taken at the PLC, so pend the requested mode and let the
+                // snapshot read-back in ApplySnapshot arbitrate.
+                _pendingModeSetAt = DateTime.UtcNow;
+                CommandFeedbackText = $"{label}模式已请求，等待PLC确认";
+            }
+            else
+            {
+                // The first write did not land (or the secondary was explicitly rejected), so no combo is in
+                // flight; leaving a pending mode would let a snapshot latch onto a switch the PLC never ran.
+                PendingMode = null;
+                _pendingModeSetAt = null;
+                var worst = first.Status == CommandStatus.Success ? second : first;
+                CommandFeedbackText = FormatFeedback(label, worst);
+            }
         }
-        else
+        catch (Exception ex)
         {
-            // Reflect the failing write (if any); the PLC state remains the source of truth.
-            var worst = first.Status == CommandStatus.Success ? second : first;
-            CommandFeedbackText = FormatFeedback(label, worst);
+            // A transport/command failure must not escape to the AsyncRelayCommand; release the pending flag
+            // (no combo can be confirmed) and keep the UI alive.
+            PendingMode = null;
+            _pendingModeSetAt = null;
+            CommandFeedbackText = $"命令失败：{ex.Message}";
         }
     }
 
-    private static string FormatFeedback(string label, CommandResult result)
+    private static string FormatFeedback(string label, CommandResult result, string noun = "命令")
         => result.Status switch
         {
-            CommandStatus.Success => $"{label}命令已下发",
+            CommandStatus.Success => $"{label}{noun}已下发",
             CommandStatus.Rejected => string.IsNullOrEmpty(result.Message)
-                ? $"{label}命令被拒绝"
-                : $"{label}命令被拒绝：{result.Message}",
+                ? $"{label}{noun}被拒绝"
+                : $"{label}{noun}被拒绝：{result.Message}",
             CommandStatus.Unknown => string.IsNullOrEmpty(result.Message)
-                ? $"{label}命令状态未知"
-                : $"{label}命令状态未知：{result.Message}",
+                ? $"{label}{noun}状态未知"
+                : $"{label}{noun}状态未知：{result.Message}",
             _ => string.Empty,
         };
+
+    /// <summary>The human-readable name of a requested mode, used when the switch resolves via read-back.</summary>
+    private static string ModeSwitchLabel(MachineMode mode) => mode switch
+    {
+        MachineMode.Auto => "自动",
+        MachineMode.Bypass => "直通",
+        MachineMode.Manual => "手动",
+        _ => "模式",
+    };
 
     private void RaiseCanExecuteChanged()
     {
@@ -286,7 +361,11 @@ public sealed partial class OperationViewModel : ObservableObject
 
     partial void OnHasFaultChanged(bool value) => RaiseCanExecuteChanged();
 
-    partial void OnPendingModeChanged(MachineMode? value) => OnPropertyChanged(nameof(IsModeSwitchPending));
+    partial void OnPendingModeChanged(MachineMode? value)
+    {
+        OnPropertyChanged(nameof(IsModeSwitchPending));
+        RaiseCanExecuteChanged();
+    }
 
     partial void OnConnectionStateChanged(ConnectionState value) => OnPropertyChanged(nameof(ConnectionStatusText));
 

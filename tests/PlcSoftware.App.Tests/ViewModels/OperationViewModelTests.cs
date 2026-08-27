@@ -216,6 +216,7 @@ public class OperationViewModelTests
         Assert.Equal(MachineMode.Auto, vm.Mode);
         Assert.Null(vm.PendingMode);
         Assert.False(vm.IsModeSwitchPending);
+        Assert.Contains("成功", vm.CommandFeedbackText);
     }
 
     [Fact]
@@ -227,13 +228,36 @@ public class OperationViewModelTests
         await vm.AutoModeCommand.ExecuteAsync(null);
         Assert.True(vm.IsModeSwitchPending);
 
-        // The PLC stays in Manual (M1) — the switch did not take effect; the pending flag must resolve
-        // against the confirmed state instead of lingering forever.
-        vm.ApplySnapshot(ManualStopped());
+        // The PLC stays in Manual (M1) on a snapshot that is at least one poll cycle NEWER than the write
+        // completion — it had time to switch but did not, so this is a refusal: the pending flag resolves
+        // against the confirmed state and the old mode is kept.
+        vm.ApplySnapshot(new DeviceSnapshot(Snap(("M1", true), ("M3", false), ("D110", (ushort)0)),
+            DateTime.UtcNow.AddSeconds(1)));
 
         Assert.Equal(MachineMode.Manual, vm.Mode);
         Assert.Null(vm.PendingMode);
         Assert.False(vm.IsModeSwitchPending);
+        Assert.Contains("拒绝", vm.CommandFeedbackText);
+    }
+
+    [Fact]
+    public async Task Pre_write_snapshot_with_different_mode_keeps_pending()
+    {
+        var (_, _, vm) = Online();
+        vm.ApplySnapshot(ManualStopped());
+
+        await vm.AutoModeCommand.ExecuteAsync(null);
+        Assert.True(vm.IsModeSwitchPending);
+
+        // A snapshot stamped BEFORE the write completed still reports the old mode (M1). At a 250ms poll
+        // cadence this is a pre-write stale read, NOT a refusal — the switch may still be in flight, so the
+        // pending flag must be kept.
+        vm.ApplySnapshot(new DeviceSnapshot(Snap(("M1", true), ("M3", false), ("D110", (ushort)0)),
+            DateTime.UtcNow.AddSeconds(-5)));
+
+        Assert.Equal(MachineMode.Manual, vm.Mode);
+        Assert.Equal(MachineMode.Auto, vm.PendingMode);
+        Assert.True(vm.IsModeSwitchPending);
     }
 
     [Fact]
@@ -256,15 +280,68 @@ public class OperationViewModelTests
     public async Task Failed_mode_write_does_not_pend_any_mode()
     {
         var (_, service, vm) = Online();
-        service.Handler = r => new CommandResult(r == new CommandRequest(CommandTarget.BypassMode, false)
-            ? CommandStatus.Unknown : CommandStatus.Success, r.Target, "timeout");
+        // The FIRST write (M104=1) never landed — the combo cannot have taken, so nothing can be confirmed.
+        service.Handler = r => r == new CommandRequest(CommandTarget.AutoMode, true)
+            ? new CommandResult(CommandStatus.Unknown, r.Target, "timeout")
+            : new CommandResult(CommandStatus.Success, r.Target);
         vm.ApplySnapshot(ManualStopped());
 
         await vm.AutoModeCommand.ExecuteAsync(null);
 
-        // A non-success write cannot confirm the switch, so nothing is pended and the mode stays as reported.
+        // A non-success first write cannot confirm the switch, so nothing is pended and the mode stays as reported.
         Assert.Null(vm.PendingMode);
         Assert.False(vm.IsModeSwitchPending);
+    }
+
+    [Fact]
+    public async Task Partial_mode_combo_with_unknown_second_write_still_pends()
+    {
+        var (_, service, vm) = Online();
+        // First (M104=1) write lands; second (M105=0) is unknown — the mutually-exclusive combo may have
+        // half-applied at the PLC, so the switch outcome must be arbitrated by the snapshot read-back.
+        service.Handler = r => r == new CommandRequest(CommandTarget.BypassMode, false)
+            ? new CommandResult(CommandStatus.Unknown, r.Target, "timeout")
+            : new CommandResult(CommandStatus.Success, r.Target);
+        vm.ApplySnapshot(ManualStopped());
+
+        await vm.AutoModeCommand.ExecuteAsync(null);
+
+        // Best-effort: pend the requested mode so the snapshot read-back resolves the half combo.
+        Assert.Equal(MachineMode.Auto, vm.PendingMode);
+        Assert.True(vm.IsModeSwitchPending);
+        Assert.Equal("自动模式已请求，等待PLC确认", vm.CommandFeedbackText);
+
+        // The PLC never reached Auto → a fresh-enough (≥ one poll cycle newer) snapshot refuses the switch.
+        vm.ApplySnapshot(new DeviceSnapshot(Snap(("M1", true), ("M3", false), ("D110", (ushort)0)),
+            DateTime.UtcNow.AddSeconds(1)));
+
+        Assert.Null(vm.PendingMode);
+        Assert.False(vm.IsModeSwitchPending);
+    }
+
+    // --- Mode switch cross-command guard (design §6.3): no interleaved M104/M105 combos ---------------
+
+    [Fact]
+    public async Task Pending_mode_switch_disables_other_mode_commands()
+    {
+        var (_, _, vm) = Online();
+        vm.ApplySnapshot(ManualStopped());
+
+        await vm.AutoModeCommand.ExecuteAsync(null);
+        Assert.True(vm.IsModeSwitchPending);
+
+        // While one mode switch is in flight, the other mode commands must be disabled so a rapid
+        // Auto→Manual double-submit cannot interleave 4 coil writes into a mixed M104/M105 combo.
+        Assert.False(vm.AutoModeCommand.CanExecute(null));
+        Assert.False(vm.ManualModeCommand.CanExecute(null));
+        Assert.False(vm.BypassModeCommand.CanExecute(null));
+
+        // The PLC confirms Auto; the pending clears and the other mode switches re-enable.
+        vm.ApplySnapshot(new DeviceSnapshot(Snap(("M2", true), ("M3", false), ("D110", (ushort)0)), DateTime.UtcNow));
+        Assert.False(vm.IsModeSwitchPending);
+        Assert.True(vm.AutoModeCommand.CanExecute(null));
+        Assert.True(vm.ManualModeCommand.CanExecute(null));
+        Assert.True(vm.BypassModeCommand.CanExecute(null));
     }
 
     // --- E-stop request is clearly a SOFTWARE request (design §4.4: 仅为软件停机请求) -----------------
@@ -288,6 +365,7 @@ public class OperationViewModelTests
         var request = Assert.Single(service.Requests);
         Assert.Equal(CommandTarget.EStopRequest, request.Target);
         Assert.True(request.Value); // pulse always writes true.
+        Assert.Equal("急停请求已下发", vm.CommandFeedbackText);
     }
 
     // --- Result feedback (design §6.3 结果反馈) ----------------------------------------------------
@@ -311,6 +389,52 @@ public class OperationViewModelTests
         await vm.StartCommand.ExecuteAsync(null);
 
         Assert.Equal("启动命令状态未知：transport timeout", vm.CommandFeedbackText);
+    }
+
+    [Fact]
+    public async Task Pulse_rejected_reports_denial()
+    {
+        var (_, service, vm) = Online();
+        service.Handler = _ => new CommandResult(CommandStatus.Rejected, CommandTarget.Stop, "gate: not manual-idle");
+
+        await vm.StopCommand.ExecuteAsync(null);
+
+        Assert.Equal("停止命令被拒绝：gate: not manual-idle", vm.CommandFeedbackText);
+    }
+
+    /// <summary>Exceptions from the command service must not escape the AsyncRelayCommand (they would surface
+    /// on the UI thread): they are captured and reported on the feedback line, keeping the VM alive.</summary>
+    [Fact]
+    public async Task Command_exception_sets_failure_feedback_and_keeps_vm_alive()
+    {
+        var (_, service, vm) = Online();
+        service.Handler = _ => throw new InvalidOperationException("transport failure");
+
+        // Must not rethrow.
+        await vm.StartCommand.ExecuteAsync(null);
+
+        Assert.StartsWith("命令失败：", vm.CommandFeedbackText);
+        Assert.Contains("transport failure", vm.CommandFeedbackText);
+        Assert.True(vm.IsOnline); // the VM stays usable (online gate unchanged).
+    }
+
+    [Fact]
+    public async Task Bypass_mode_shows_switched_only_after_plc_snapshot_confirms()
+    {
+        var (_, _, vm) = Online();
+        vm.ApplySnapshot(ManualStopped());
+
+        await vm.BypassModeCommand.ExecuteAsync(null);
+        Assert.Equal(MachineMode.Bypass, vm.PendingMode);
+        Assert.True(vm.IsModeSwitchPending);
+
+        // PLC confirms Bypass via M13.
+        vm.ApplySnapshot(new DeviceSnapshot(Snap(("M13", true), ("M3", false), ("D110", (ushort)0)), DateTime.UtcNow));
+
+        Assert.Equal(MachineMode.Bypass, vm.Mode);
+        Assert.Null(vm.PendingMode);
+        Assert.False(vm.IsModeSwitchPending);
+        Assert.Contains("成功", vm.CommandFeedbackText);
     }
 
     /// <summary>Read-only <see cref="ICommandGate"/> the tests control directly.</summary>
