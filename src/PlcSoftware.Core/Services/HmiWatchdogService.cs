@@ -72,8 +72,14 @@ public sealed class HmiWatchdogService
             }
             catch (OperationCanceledException)
             {
-                // Shutdown: join the loop cleanly.
-                break;
+                // Only a genuine shutdown (the loop token cancelled) joins the loop cleanly. An OCE carrying
+                // a foreign token — or any transport-level cancellation that is not this loop's shutdown token
+                // — is a transient per-step skip (same as a generic write failure), so the D106 fallback keeps
+                // ticking rather than being torn down. Fall through to the cadence delay.
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
             }
             catch
             {

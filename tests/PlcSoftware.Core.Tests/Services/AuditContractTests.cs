@@ -79,6 +79,40 @@ public class AuditContractTests
     }
 
     [Fact]
+    public async Task BypassHoldingWrite_ThrowingAuditLog_StillSucceeds_AttemptSwallowed()
+    {
+        var client = new RecordingClient();
+        var audit = new CountingThrowingAuditLog();
+        var service = new CommandService(client, new FakeGate(), new FakeDelay(), auditLog: audit);
+
+        // A throwing audit implementation must not turn an already-committed 屏蔽 write into a failure
+        // (design audit contract: the audit is an observer). The event is attempted exactly once then
+        // swallowed, and the mask write itself still lands.
+        var result = await service.ExecuteAsync(new CommandRequest(CommandTarget.LightCurtainBypass, Value: true), CancellationToken.None);
+
+        Assert.Equal(CommandStatus.Success, result.Status);
+        Assert.Equal(1, audit.Attempts);
+        Assert.Contains(((ushort)110, true), client.CoilWrites);
+    }
+
+    [Fact]
+    public async Task ParameterWrite_ThrowingAuditLog_StillSucceeds_WithCorrectReadBack()
+    {
+        var client = new RecordingClient();
+        var audit = new CountingThrowingAuditLog();
+        var service = new ParameterService(client, new FakeGate(), Writable(), auditLog: audit);
+
+        // A throwing audit implementation must not turn an already-committed 参数 write into a failure;
+        // the write is committed and the read-back still confirms it (design audit contract).
+        var result = await service.WriteAsync("D201", 250, CancellationToken.None);
+
+        Assert.Equal(ParameterWriteStatus.Success, result.Status);
+        Assert.Equal(250, result.ReadBack);
+        Assert.Equal(1, audit.Attempts);
+        Assert.Equal(new[] { ((ushort)101, (ushort)250) }, client.Writes);
+    }
+
+    [Fact]
     public void DebugCategory_IsPartOfTheAuditContract()
     {
         // The diagnostic terminal (a later task) must be able to plug into this interface without a
@@ -101,6 +135,19 @@ public class AuditContractTests
         public void Record(AuditEvent auditEvent) => _events.Add(auditEvent);
     }
 
+    /// <summary>Counts each audit attempt and always throws — a misbehaving audit backend that the
+    /// producers must isolate (they must never let the recording failure change the write outcome).</summary>
+    private sealed class CountingThrowingAuditLog : IAuditLog
+    {
+        public int Attempts { get; private set; }
+
+        public void Record(AuditEvent auditEvent)
+        {
+            Attempts++;
+            throw new InvalidOperationException("audit backend unavailable");
+        }
+    }
+
     private sealed class FakeGate : ICommandGate
     {
         public bool IsOnline { get; set; } = true;
@@ -117,8 +164,11 @@ public class AuditContractTests
     {
         private readonly Dictionary<ushort, ushort> _registers = new();
         private readonly List<(ushort Address, ushort Value)> _writes = new();
+        private readonly List<(ushort Address, bool Value)> _coilWrites = new();
 
         public IReadOnlyList<(ushort Address, ushort Value)> Writes => _writes.ToArray();
+
+        public IReadOnlyList<(ushort Address, bool Value)> CoilWrites => _coilWrites.ToArray();
 
         public Task WriteSingleRegisterAsync(byte slaveId, ushort address, ushort value, CancellationToken cancellationToken)
         {
@@ -137,6 +187,7 @@ public class AuditContractTests
         public Task WriteSingleCoilAsync(byte slaveId, ushort address, bool value, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            _coilWrites.Add((address, value));
             return Task.CompletedTask;
         }
 

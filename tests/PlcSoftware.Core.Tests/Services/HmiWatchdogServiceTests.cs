@@ -95,6 +95,50 @@ public class HmiWatchdogServiceTests
         Assert.Equal(new[] { 200.0, 200.0 }, delay.Delays.Select(d => d.TotalMilliseconds));
     }
 
+    [Fact]
+    public async Task RunAsync_ForeignTokenOperationCanceledDuringWrite_IsTransientSkip_LoopSurvives()
+    {
+        using var loopCts = new CancellationTokenSource();
+        using var foreignCts = new CancellationTokenSource(); // never cancelled — a non-shutdown token.
+        // The first D106 write throws an OCE carrying a FOREIGN token. That is not a shutdown signal:
+        // the loop must treat it as a transient per-step skip and keep running (D106 keeps ticking).
+        var client = new FaultyClient(
+            throwOnWrite: 1,
+            throwCount: 1,
+            toThrow: new OperationCanceledException(foreignCts.Token));
+        // The 3rd delay cancels the loop token, so the test terminates after the blip was survived.
+        var delay = new FakeDelay(loopCts, cancelOnCall: 3);
+        var service = new HmiWatchdogService(client, new FakeGate(), delay);
+
+        await service.RunAsync(loopCts.Token);
+
+        // Steps 2 and 3 still landed (D106 → 2, 3): the foreign-token OCE was a skip, not a shutdown.
+        // The counter advances before the write, so the failed step 1 consumed value 1 — the surviving
+        // writes begin at 2 (the skipped value was never written to D106).
+        Assert.Equal(new[] { ((ushort)6, (ushort)2), ((ushort)6, (ushort)3) }, client.Writes);
+        Assert.Equal(new[] { 200.0, 200.0, 200.0 }, delay.Delays.Select(d => d.TotalMilliseconds));
+    }
+
+    [Fact]
+    public async Task RunAsync_OneOffTransientWriteException_IsSkipped_LoopSurvives()
+    {
+        using var cts = new CancellationTokenSource();
+        // A generic (non-cancellation) transport failure once: per-step skip, not a loop teardown.
+        var client = new FaultyClient(
+            throwOnWrite: 1,
+            throwCount: 1,
+            toThrow: new InvalidOperationException("transient transport blip"));
+        var delay = new FakeDelay(cts, cancelOnCall: 3);
+        var service = new HmiWatchdogService(client, new FakeGate(), delay);
+
+        await service.RunAsync(cts.Token);
+
+        // One-off generic transport failure at step 1: per-step skip, loop survives. Counter advances
+        // before the write, so surviving writes begin at 2.
+        Assert.Equal(new[] { ((ushort)6, (ushort)2), ((ushort)6, (ushort)3) }, client.Writes);
+        Assert.Equal(new[] { 200.0, 200.0, 200.0 }, delay.Delays.Select(d => d.TotalMilliseconds));
+    }
+
     /// <summary>Records every D-register write (address + value). D106 writes target protocol address 6.</summary>
     private sealed class RecordingClient : IModbusClient
     {
@@ -105,6 +149,62 @@ public class HmiWatchdogServiceTests
         public Task WriteSingleRegisterAsync(byte slaveId, ushort address, ushort value, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            _writes.Add((address, value));
+            return Task.CompletedTask;
+        }
+
+        public Task ConnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task DisconnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<bool[]> ReadCoilsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+            => Task.FromResult(new bool[count]);
+
+        public Task<bool[]> ReadDiscreteInputsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+            => Task.FromResult(new bool[count]);
+
+        public Task<ushort[]> ReadHoldingRegistersAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+            => Task.FromResult(new ushort[count]);
+
+        public Task<ushort[]> ReadInputRegistersAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+            => Task.FromResult(new ushort[count]);
+
+        public Task WriteSingleCoilAsync(byte slaveId, ushort address, bool value, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Records every D-register write, but throws a caller-supplied exception on a chosen write call
+    /// (a 1-based ordinal range), modelling a one-off transport blip; writes resume afterwards.
+    /// </summary>
+    private sealed class FaultyClient : IModbusClient
+    {
+        private readonly int _throwOnWrite;
+        private readonly int _throwCount;
+        private readonly Exception _toThrow;
+        private int _writeCalls;
+        private readonly List<(ushort Address, ushort Value)> _writes = new();
+
+        public FaultyClient(int throwOnWrite, int throwCount, Exception toThrow)
+        {
+            _throwOnWrite = throwOnWrite;
+            _throwCount = throwCount;
+            _toThrow = toThrow;
+        }
+
+        public IReadOnlyList<(ushort Address, ushort Value)> Writes => _writes.ToArray();
+
+        public Task WriteSingleRegisterAsync(byte slaveId, ushort address, ushort value, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _writeCalls++;
+            if (_writeCalls >= _throwOnWrite && _writeCalls < _throwOnWrite + _throwCount)
+            {
+                throw _toThrow;
+            }
+
             _writes.Add((address, value));
             return Task.CompletedTask;
         }
