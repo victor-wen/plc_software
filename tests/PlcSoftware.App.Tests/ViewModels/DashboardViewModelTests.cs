@@ -93,11 +93,11 @@ public class DashboardViewModelTests
     public void Resize_clamps_to_1_4_units()
     {
         var (vm, _, _, _) = Build();
-        var tile = vm.Tiles[3];
+        var tile = vm.Tiles[3]; // note: 2x2.
 
         vm.Resize(tile, +1, +1);
         Assert.Equal(3, tile.Cols);
-        Assert.Equal(2, tile.Rows);
+        Assert.Equal(3, tile.Rows);
 
         vm.Resize(tile, -10, -10);
         Assert.Equal(1, tile.Cols);
@@ -120,8 +120,8 @@ public class DashboardViewModelTests
         Assert.Equal("home", saved.Key);
         Assert.Equal(4, saved.Value.Count);
         Assert.Equal("run", saved.Value[0].Id);
-        Assert.Equal(4, saved.Value[0].Cols);
-        Assert.Equal(1, saved.Value[0].Rows);
+        Assert.Equal(4, saved.Value[0].Cols); // 2 + 4 clamped to 4.
+        Assert.Equal(3, saved.Value[0].Rows); // 2 + 1.
         Assert.Contains("已保存", vm.StatusText);
     }
 
