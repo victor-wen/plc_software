@@ -94,32 +94,32 @@ public sealed class DiagnosticTerminalService
     /// <summary>Reads coils (FC01). Read-only: always permitted.</summary>
     public Task<TerminalOpResult> ReadCoils(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
         => RunAsync("coils", slaveId, address, count, null,
-            op => op.ReadCoilsAsync(slaveId, address, count, cancellationToken));
+            async op => (object?)(await op.ReadCoilsAsync(slaveId, address, count, cancellationToken)));
 
     /// <summary>Reads discrete inputs (FC02). Read-only: always permitted.</summary>
     public Task<TerminalOpResult> ReadDiscrete(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
         => RunAsync("discrete", slaveId, address, count, null,
-            op => op.ReadDiscreteInputsAsync(slaveId, address, count, cancellationToken));
+            async op => (object?)(await op.ReadDiscreteInputsAsync(slaveId, address, count, cancellationToken)));
 
     /// <summary>Reads holding registers (FC03). Read-only: always permitted.</summary>
     public Task<TerminalOpResult> ReadHolding(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
         => RunAsync("holding", slaveId, address, count, null,
-            op => op.ReadHoldingRegistersAsync(slaveId, address, count, cancellationToken));
+            async op => (object?)(await op.ReadHoldingRegistersAsync(slaveId, address, count, cancellationToken)));
 
     /// <summary>Reads input registers (FC04). Read-only: always permitted.</summary>
     public Task<TerminalOpResult> ReadInput(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
         => RunAsync("input", slaveId, address, count, null,
-            op => op.ReadInputRegistersAsync(slaveId, address, count, cancellationToken));
+            async op => (object?)(await op.ReadInputRegistersAsync(slaveId, address, count, cancellationToken)));
 
     /// <summary>Writes a single coil (FC05). Allowed only while unlocked and the machine is not running.</summary>
     public Task<TerminalOpResult> WriteCoil(byte slaveId, ushort address, bool value, CancellationToken cancellationToken)
         => RunAsync("coil-write", slaveId, address, count: null, value,
-            op => op.WriteSingleCoilAsync(slaveId, address, value, cancellationToken));
+            async op => { await op.WriteSingleCoilAsync(slaveId, address, value, cancellationToken); return value; });
 
     /// <summary>Writes a single register (FC06). Allowed only while unlocked and the machine is not running.</summary>
     public Task<TerminalOpResult> WriteRegister(byte slaveId, ushort address, ushort value, CancellationToken cancellationToken)
         => RunAsync("register-write", slaveId, address, count: null, value,
-            op => op.WriteSingleRegisterAsync(slaveId, address, value, cancellationToken));
+            async op => { await op.WriteSingleRegisterAsync(slaveId, address, value, cancellationToken); return value; });
 
     private async Task<TerminalOpResult> RunAsync(
         string operation,
@@ -127,7 +127,7 @@ public sealed class DiagnosticTerminalService
         ushort address,
         ushort? count,
         object? value,
-        Func<IModbusClient, Task> invoke)
+        Func<IModbusClient, Task<object?>> invoke)
     {
         var stopwatch = Stopwatch.StartNew();
 
@@ -145,9 +145,12 @@ public sealed class DiagnosticTerminalService
                     stopwatch);
             }
 
-            await invoke(_client);
+            // The delegate returns the value the operation produced (the read registers/coils, or the value
+            // just written); it becomes the result's Value so the terminal can render the response hex
+            // (design §6.9: 显示请求摘要、响应、耗时、异常码和十六进制数据).
+            var resultValue = await invoke(_client);
 
-            return Complete(operation, slaveId, address, count, value, Ok(value, string.Empty), stopwatch);
+            return Complete(operation, slaveId, address, count, resultValue, Ok(resultValue, string.Empty), stopwatch);
         }
         catch (OperationCanceledException)
         {

@@ -54,7 +54,16 @@ public static class PressAndHoldBehavior
             "CommandTarget",
             typeof(CommandTarget),
             typeof(PressAndHoldBehavior),
-            new PropertyMetadata(CommandTarget.ManualWidthPlus, OnCommandTargetChanged));
+            // The metadata default must NOT be a jog target. WPF fires the PropertyChangedCallback only when the
+            // value actually *changes*; if the default were a jog target (e.g. ManualWidthPlus), attaching the
+            // behavior to a ManualWidthPlus button — the most common config — would set the property to its own
+            // default, a no-op that never runs OnCommandTargetChanged, so the mouse/focus handlers would never be
+            // subscribed and the press-and-hold (and every release trigger) would be silently dead. Using a
+            // non-jog sentinel (default(CommandTarget) == the first enum member, EStopRequest) makes any explicit
+            // jog-target assignment a real change, so the handlers are reliably wired. A jog button is always
+            // configured to one of the four M106-M109 targets in XAML, so an unset value is a mis-config and
+            // PressJog fails fast on it.
+            new PropertyMetadata(default(CommandTarget), OnCommandTargetChanged));
 
     /// <summary>Reads the jog coil a button controls.</summary>
     public static CommandTarget GetCommandTarget(DependencyObject obj)
