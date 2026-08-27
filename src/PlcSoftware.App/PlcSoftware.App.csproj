@@ -5,6 +5,10 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- The CI publish path restores/publishes this app self-contained for win-x64. Declaring the RID in
+         the project (instead of passing -r at restore time only) keeps the project's runtime graph stable,
+         so both the plain solution restore and the win-x64 publish restore agree with the lock file. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>

@@ -2,6 +2,10 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <!-- win-x64 is declared because the desktop app consumes these libraries from its win-x64
+         self-contained publish graph; keeping the runtime graph stable makes the locked-mode
+         restore agree in both the plain solution restore and the -r win-x64 publish restore. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
 </Project>
