@@ -1,0 +1,193 @@
+<UserControl x:Class="PlcSoftware.App.Views.OperationBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- Operation zone (design §6.3): 启动 / 停止 / 复位 / 急停请求 / 自动 / 手动 / 直通.
+             The whole operation group greys out (opacity) when offline; the header stays readable so the
+             frozen connection/mode text never greys. Colours carry text + icon redundancy (design §6.1). -->
+        <Style x:Key="OperationGroupStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="Opacity" Value="1" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsOnline}" Value="False">
+                    <Setter Property="Opacity" Value="0.4" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="4,12,4,4" />
+        </Style>
+
+        <Style x:Key="CommandButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#EDEFF2" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryForegroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="20,10" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="MinWidth" Value="104" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.92" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Software e-stop request: red + text + an explicit 软件 badge so it can never be mistaken for a
+             physical e-stop (design §4.4: 仅为软件停机请求). -->
+        <Style x:Key="EStopButtonStyle" TargetType="Button" BasedOn="{StaticResource CommandButtonStyle}">
+            <Setter Property="Background" Value="{StaticResource StatusAlertBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource InverseForegroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource StatusAlertBrush}" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Header: connection + confirmed PLC mode; readable even offline. -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="4,0,4,8">
+                <TextBlock Text="操作区"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource PrimaryForegroundBrush}" />
+                <TextBlock Text="连接："
+                           Style="{StaticResource SectionLabelStyle}"
+                           Margin="16,6,2,0" />
+                <TextBlock Text="{Binding ConnectionStatusText}" Margin="0,6,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource StatusAlertBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource StatusOkBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="当前模式："
+                           Style="{StaticResource SectionLabelStyle}"
+                           Margin="40,6,2,0" />
+                <TextBlock Text="{Binding ModeText}" Margin="0,6,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource StatusNeutralBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Mode}" Value="Auto">
+                                    <Setter Property="Foreground" Value="{StaticResource StatusOkBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Mode}" Value="Manual">
+                                    <Setter Property="Foreground" Value="{StaticResource StatusOkBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Mode}" Value="Bypass">
+                                    <Setter Property="Foreground" Value="{StaticResource StatusWarnBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+
+            <!-- Mode switch-in-progress notice: shown only while a request awaits PLC confirmation. -->
+            <TextBlock Grid.Row="1"
+                       Text="模式切换中，等待 PLC 确认…"
+                       Style="{StaticResource SectionLabelStyle}"
+                       Margin="4,0,4,4"
+                       Foreground="{StaticResource StatusWarnBrush}"
+                       Visibility="{Binding IsModeSwitchPending, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+            <!-- Result feedback (design §6.3). -->
+            <TextBlock Grid.Row="2"
+                       Text="{Binding CommandFeedbackText}"
+                       Style="{StaticResource SectionLabelStyle}"
+                       Margin="4,0,4,8"
+                       Foreground="{StaticResource StatusNeutralBrush}" />
+
+            <!-- Operation group. -->
+            <Border Grid.Row="3" Style="{StaticResource OperationGroupStyle}">
+                <StackPanel>
+                    <TextBlock Text="运行命令" Style="{StaticResource SectionLabelStyle}" Margin="4,0,4,4" />
+                    <WrapPanel Orientation="Horizontal">
+                        <Button Content="启动"
+                                Style="{StaticResource CommandButtonStyle}"
+                                Command="{Binding StartCommand}" />
+                        <Button Content="停止"
+                                Style="{StaticResource CommandButtonStyle}"
+                                Command="{Binding StopCommand}" />
+                        <Button Content="复位"
+                                Style="{StaticResource CommandButtonStyle}"
+                                Command="{Binding ResetCommand}" />
+                        <!-- 急停请求 is a software request (M100), clearly marked so it is never relied on
+                             as a physical e-stop. -->
+                        <Button Command="{Binding EStopRequestCommand}"
+                                ToolTip="{Binding EStopRequestHint}"
+                                Style="{StaticResource EStopButtonStyle}">
+                            <StackPanel>
+                                <TextBlock Text="⚠ 急停请求"
+                                           FontSize="15"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock Text="{Binding EStopRequestText}"
+                                           FontSize="10"
+                                           Opacity="0.9"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </WrapPanel>
+
+                    <TextBlock Text="模式" Style="{StaticResource SectionLabelStyle}" Margin="4,12,4,4" />
+                    <WrapPanel Orientation="Horizontal">
+                        <Button Content="手动"
+                                Style="{StaticResource CommandButtonStyle}"
+                                Command="{Binding ManualModeCommand}" />
+                        <Button Content="自动"
+                                Style="{StaticResource CommandButtonStyle}"
+                                Command="{Binding AutoModeCommand}" />
+                        <Button Content="直通"
+                                Style="{StaticResource CommandButtonStyle}"
+                                Command="{Binding BypassModeCommand}" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

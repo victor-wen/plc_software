@@ -59,6 +59,13 @@ public partial class App : Application
         supervisor.StateChanged += state => RunOnUi(() => overview.ApplyConnectionState(state));
         store.SnapshotChanged += (_, snapshot) => RunOnUi(() => overview.ApplySnapshot(snapshot));
 
+        // Operation zone (design §6.3): executes host commands through the composition-root ICommandService
+        // and gates them through the injected ICommandGate (AppCommandGate). It only consumes the snapshot +
+        // link state for the CanExecute pre-gate, so it is wired exactly like the other pages.
+        var operation = _host.Services.GetRequiredService<OperationViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => operation.ApplyConnectionState(state));
+        store.SnapshotChanged += (_, snapshot) => RunOnUi(() => operation.ApplySnapshot(snapshot));
+
         // Seed once after subscribing so an event raised before the subscription (or before the host start
         // finished) is not lost — the first StateChanged/SnapshotChanged/StatusChanged can fire while the
         // hosted loops are still starting, before the wiring above is in place. Latest state wins over any
@@ -69,6 +76,8 @@ public partial class App : Application
         viewModel.ApplyMaskState(heldState.LightCurtainBypass, heldState.DoorBypass);
         overview.ApplyConnectionState(supervisor.CurrentState);
         overview.ApplySnapshot(store.Current);
+        operation.ApplyConnectionState(supervisor.CurrentState);
+        operation.ApplySnapshot(store.Current);
 
         var window = _host.Services.GetRequiredService<MainWindow>();
         window.DataContext = viewModel;
@@ -165,6 +174,8 @@ public partial class App : Application
             faults.ToDictionary(f => f.Code, f => f.Message)));
         services.AddSingleton<OverviewViewModel>();
         services.AddSingleton<OverviewView>();
+        services.AddSingleton<OperationViewModel>();
+        services.AddSingleton<OperationBar>();
         services.AddSingleton<MainWindow>();
     }
 
