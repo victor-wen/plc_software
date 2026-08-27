@@ -236,13 +236,17 @@ public class ManualReleaseTriggerTests
         var parametersView = new ParametersView();
         var ioDiagnosticsVm = new IoDiagnosticsViewModel(Array.Empty<PointDefinition>());
         var ioDiagnosticsView = new IoDiagnosticsView();
+        var diagnosticTerminalVm = new DiagnosticTerminalViewModel(
+            new DiagnosticTerminalService(new TrivialModbusClient()),
+            gate);
+        var diagnosticTerminalView = new DiagnosticTerminalView();
         var connectionSettingsVm = new ConnectionSettingsViewModel(new TrivialConnectionTester());
         var connectionSettingsView = new ConnectionSettingsView();
         var historyVm = new HistoryViewModel((f, t) => new(), (f, t) => new());
         var historyView = new HistoryView();
         return new MainWindow(overviewVm, overviewView, operationVm, operationBar, manualVm, manualView,
-            parametersVm, parametersView, ioDiagnosticsVm, ioDiagnosticsView, connectionSettingsVm,
-            connectionSettingsView, historyVm, historyView);
+            parametersVm, parametersView, ioDiagnosticsVm, ioDiagnosticsView, diagnosticTerminalVm,
+            diagnosticTerminalView, connectionSettingsVm, connectionSettingsView, historyVm, historyView);
     }
 
     private static Button CreateJogButton(ManualViewModel vm)

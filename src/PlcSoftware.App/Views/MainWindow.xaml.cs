@@ -12,8 +12,9 @@ namespace PlcSoftware.App.Views;
 ///
 /// <para>The 总览 nav entry shows the overview page in <see cref="PageHost"/>, the 操作 entry shows the
 /// operation zone (design §6.3), the 手动 entry shows the manual page (design §6.4), the 参数 entry shows the
-/// parameter page (design §6.5), the I/O 诊断 entry shows the read-only I/O table (design §6.6) and the 通信设置
-/// entry shows the communication-settings page (design §6.8); each page's data context is its injected view
+/// parameter page (design §6.5), the I/O 诊断 entry shows the read-only I/O table (design §6.6), the 调试终端
+/// entry shows the structured Modbus debug terminal (design §6.5) and the 通信设置 entry shows the
+/// communication-settings page (design §6.8); each page's data context is its injected view
 /// model. The remaining nav button (报警与历史) is still a visual placeholder — its page belongs to a later task.</para>
 ///
 /// <para><b>App-exit jog release is best-effort (design §6.4 应用退出).</b> On <see cref="Window.Closing"/> the
@@ -41,6 +42,8 @@ public partial class MainWindow : Window
     private readonly ParametersViewModel _parametersViewModel;
     private readonly IoDiagnosticsView _ioDiagnosticsView;
     private readonly IoDiagnosticsViewModel _ioDiagnosticsViewModel;
+    private readonly DiagnosticTerminalView _diagnosticTerminalView;
+    private readonly DiagnosticTerminalViewModel _diagnosticTerminalViewModel;
     private readonly ConnectionSettingsView _connectionSettingsView;
     private readonly ConnectionSettingsViewModel _connectionSettingsViewModel;
     private readonly HistoryView _historyView;
@@ -61,6 +64,8 @@ public partial class MainWindow : Window
         ParametersView parametersView,
         IoDiagnosticsViewModel ioDiagnosticsViewModel,
         IoDiagnosticsView ioDiagnosticsView,
+        DiagnosticTerminalViewModel diagnosticTerminalViewModel,
+        DiagnosticTerminalView diagnosticTerminalView,
         ConnectionSettingsViewModel connectionSettingsViewModel,
         ConnectionSettingsView connectionSettingsView,
         HistoryViewModel historyViewModel,
@@ -78,6 +83,8 @@ public partial class MainWindow : Window
         _parametersView = parametersView ?? throw new ArgumentNullException(nameof(parametersView));
         _ioDiagnosticsViewModel = ioDiagnosticsViewModel ?? throw new ArgumentNullException(nameof(ioDiagnosticsViewModel));
         _ioDiagnosticsView = ioDiagnosticsView ?? throw new ArgumentNullException(nameof(ioDiagnosticsView));
+        _diagnosticTerminalViewModel = diagnosticTerminalViewModel ?? throw new ArgumentNullException(nameof(diagnosticTerminalViewModel));
+        _diagnosticTerminalView = diagnosticTerminalView ?? throw new ArgumentNullException(nameof(diagnosticTerminalView));
         _connectionSettingsViewModel = connectionSettingsViewModel ?? throw new ArgumentNullException(nameof(connectionSettingsViewModel));
         _connectionSettingsView = connectionSettingsView ?? throw new ArgumentNullException(nameof(connectionSettingsView));
         _historyViewModel = historyViewModel ?? throw new ArgumentNullException(nameof(historyViewModel));
@@ -175,6 +182,19 @@ public partial class MainWindow : Window
         }
 
         PageHost.Content = _ioDiagnosticsView;
+    }
+
+    /// <summary>Navigates to the Modbus debug terminal (design §6.5) by hosting the injected view in the page
+    /// region and binding it to the diagnostic-terminal view model.</summary>
+    private void OnDiagnosticTerminalClicked(object sender, RoutedEventArgs e)
+    {
+        ReleaseManualJogsOnSwitch();
+        if (_diagnosticTerminalView.DataContext is null)
+        {
+            _diagnosticTerminalView.DataContext = _diagnosticTerminalViewModel;
+        }
+
+        PageHost.Content = _diagnosticTerminalView;
     }
 
     /// <summary>Navigates to the communication-settings page (design §6.8) by hosting the injected view in the

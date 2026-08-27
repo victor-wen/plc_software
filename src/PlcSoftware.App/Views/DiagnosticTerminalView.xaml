@@ -1,0 +1,228 @@
+<UserControl x:Class="PlcSoftware.App.Views.DiagnosticTerminalView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- Structured Modbus debug terminal (design §6.5): FC01/02/03/04 reads and FC05/06 single-point
+             writes. The whole data region greys out (opacity) when offline (design §5.3); the header stays
+             readable so the frozen connection text never greys. -->
+        <Style x:Key="TerminalGroupStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="Opacity" Value="1" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsOnline}" Value="False">
+                    <Setter Property="Opacity" Value="0.4" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="4,12,4,4" />
+        </Style>
+
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#EDEFF2" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryForegroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.92" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="InputLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="4,0,4,0" />
+        </Style>
+
+        <Style x:Key="InputBoxStyle" TargetType="TextBox">
+            <Setter Property="Width" Value="110" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Margin" Value="4" />
+        </Style>
+
+        <!-- Result value rendering (design §6.5: 十六进制数据显示): a monospace hex readout. -->
+        <Style x:Key="HexResultStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource PrimaryForegroundBrush}" />
+            <Setter Property="FontFamily" Value="Consolas, Courier New, monospace" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Header: connection; readable even offline. -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="4,0,4,8">
+                <TextBlock Text="调试终端"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource PrimaryForegroundBrush}" />
+                <TextBlock Text="连接："
+                           Style="{StaticResource SectionLabelStyle}"
+                           Margin="16,6,2,0" />
+                <TextBlock Text="{Binding ConnectionStatusText}" Margin="0,6,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource StatusAlertBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource StatusOkBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="读取任意；写入需解锁且停机。"
+                           Style="{StaticResource SectionLabelStyle}"
+                           Margin="40,6,0,0" />
+            </StackPanel>
+
+            <!-- Read block (design §6.5: FC01/02/03/04 读取, 始终允许). -->
+            <Border Grid.Row="1" Style="{StaticResource TerminalGroupStyle}">
+                <StackPanel>
+                    <TextBlock Text="按功能码读取" Style="{StaticResource SectionLabelStyle}" Margin="4,0,4,4" />
+                    <StackPanel Orientation="Horizontal" Margin="4,4,4,4">
+                        <TextBlock Text="功能码：" Style="{StaticResource InputLabelStyle}" />
+                        <ComboBox Width="180"
+                                  Margin="4"
+                                  ItemsSource="{Binding ReadFunctions}"
+                                  DisplayMemberPath="Label"
+                                  SelectedItem="{Binding SelectedReadFunction}">
+                            <ComboBox.ItemContainerStyle>
+                                <Style TargetType="ComboBoxItem">
+                                    <Setter Property="Foreground" Value="{StaticResource PrimaryForegroundBrush}" />
+                                </Style>
+                            </ComboBox.ItemContainerStyle>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="4,4,4,4">
+                        <TextBlock Text="站号：" Style="{StaticResource InputLabelStyle}" />
+                        <TextBox Style="{StaticResource InputBoxStyle}" Text="{Binding SlaveId, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="地址：" Style="{StaticResource InputLabelStyle}" />
+                        <TextBox Style="{StaticResource InputBoxStyle}" Text="{Binding Address, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="数量：" Style="{StaticResource InputLabelStyle}" />
+                        <TextBox Style="{StaticResource InputBoxStyle}" Text="{Binding Count, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="4,4,4,4">
+                        <Button Content="读取" Style="{StaticResource ActionButtonStyle}" Command="{Binding RunReadCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Write lock + value block (design §6.5: 解锁后才允许写入, 5 分钟自动锁定). -->
+            <Border Grid.Row="2" Style="{StaticResource TerminalGroupStyle}">
+                <StackPanel>
+                    <TextBlock Text="单点写入 (FC05 / FC06)" Style="{StaticResource SectionLabelStyle}" Margin="4,0,4,4" />
+                    <StackPanel Orientation="Horizontal" Margin="4,4,4,4">
+                        <CheckBox Content="解锁写入" IsChecked="{Binding IsUnlocked}" />
+                        <Button Content="解锁" Style="{StaticResource ActionButtonStyle}" Margin="12,0,0,0" Command="{Binding UnlockCommand}" />
+                        <Button Content="立即锁定" Style="{StaticResource ActionButtonStyle}" Command="{Binding LockCommand}" />
+                        <TextBlock Text="写入 5 分钟后自动锁；机器运行时禁止写入。"
+                                   Style="{StaticResource InputLabelStyle}"
+                                   Margin="16,0,0,0" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="4,4,4,4">
+                        <TextBlock Text="站号：" Style="{StaticResource InputLabelStyle}" />
+                        <TextBox Style="{StaticResource InputBoxStyle}" Text="{Binding SlaveId, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="地址：" Style="{StaticResource InputLabelStyle}" />
+                        <TextBox Style="{StaticResource InputBoxStyle}" Text="{Binding Address, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="值 (0..65535 / true·false)：" Style="{StaticResource InputLabelStyle}" />
+                        <TextBox Style="{StaticResource InputBoxStyle}" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="4,4,4,4">
+                        <Button Content="写线圈 (FC05)" Style="{StaticResource ActionButtonStyle}" Command="{Binding WriteCoilCommand}" />
+                        <Button Content="写寄存器 (FC06)" Style="{StaticResource ActionButtonStyle}" Command="{Binding WriteRegisterCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Result block (design §6.5: 响应耗时、十六进制显示、错误/状态反馈). -->
+            <Border Grid.Row="3" Style="{StaticResource TerminalGroupStyle}">
+                <StackPanel>
+                    <TextBlock Text="结果" Style="{StaticResource SectionLabelStyle}" Margin="4,0,4,4" />
+                    <StackPanel Orientation="Horizontal" Margin="4,4,4,4">
+                        <TextBlock Text="状态：" Style="{StaticResource InputLabelStyle}" />
+                        <TextBlock Text="{Binding StatusText}"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource PrimaryForegroundBrush}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="耗时：" Style="{StaticResource InputLabelStyle}" Margin="24,0,4,0" />
+                        <TextBlock Text="{Binding ElapsedMs}"
+                                   FontSize="13"
+                                   Foreground="{StaticResource PrimaryForegroundBrush}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text=" ms" Style="{StaticResource InputLabelStyle}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding ErrorText}"
+                               FontSize="12"
+                               Foreground="{StaticResource StatusAlertBrush}"
+                               Margin="4,4,0,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <Trigger Property="Text" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </Trigger>
+                                    <Trigger Property="Text" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="十六进制：" Style="{StaticResource InputLabelStyle}" Margin="4,8,4,0" />
+                    <TextBlock Text="{Binding HexResult}" Style="{StaticResource HexResultStyle}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

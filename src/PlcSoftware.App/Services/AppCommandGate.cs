@@ -40,6 +40,12 @@ internal sealed class AppCommandGate : ICommandGate
         }
     }
 
+    /// <summary>Reads the machine's run bit (M3) from a decoded snapshot. The diagnostic terminal's
+    /// write guard (design §6.5: 机器运行时禁止写入) is wired here, reusing the exact bit the
+    /// <see cref="IsManualIdle"/> gate reads.</summary>
+    public static bool ReadRunState(IReadOnlyDictionary<string, object?> values)
+        => ReadBool(values, "M3");
+
     private static bool ReadBool(IReadOnlyDictionary<string, object?> values, string key)
         => values.TryGetValue(key, out var value) && value switch
         {

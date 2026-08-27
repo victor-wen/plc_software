@@ -80,6 +80,11 @@ public partial class App : Application
         supervisor.StateChanged += state => RunOnUi(() => parameters.ApplyConnectionState(state));
         store.SnapshotChanged += (_, snapshot) => RunOnUi(() => parameters.ApplySnapshot(snapshot));
 
+        // Diagnostic terminal page (design §6.5): only the link state refreshes the header and the write
+        // pre-gate; the actual command timing/hex/elapsed presentation is an explicit user action.
+        var diagnosticTerminal = _host.Services.GetRequiredService<DiagnosticTerminalViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => diagnosticTerminal.ApplyConnectionState(state));
+
         // I/O diagnostics page (design §6.6): read-only X/Y/M table fed only by the snapshot + link state.
         var ioDiagnostics = _host.Services.GetRequiredService<IoDiagnosticsViewModel>();
         supervisor.StateChanged += state => RunOnUi(() => ioDiagnostics.ApplyConnectionState(state));
@@ -106,6 +111,7 @@ public partial class App : Application
         manual.ApplySnapshot(store.Current);
         parameters.ApplyConnectionState(supervisor.CurrentState);
         parameters.ApplySnapshot(store.Current);
+        diagnosticTerminal.ApplyConnectionState(supervisor.CurrentState);
         ioDiagnostics.ApplyConnectionState(supervisor.CurrentState);
         ioDiagnostics.ApplySnapshot(store.Current);
         connectionSettings.ApplyConnectionState(supervisor.CurrentState);
@@ -193,6 +199,16 @@ public partial class App : Application
             sp.GetRequiredService<ICommandGate>(),
             sp.GetRequiredService<IAsyncDelay>()));
 
+        // Diagnostic terminal (design §6.5): structured FC01/02/03/04 reads and FC05/06 single-point
+        // writes over the shared single-queue client (so the terminal cannot bypass the request queue),
+        // gated by the 5-minute unlock and the machine-running provider. Writes execute through the App
+        // read-only view of link/machine state.
+        services.AddSingleton(sp => new DiagnosticTerminalService(
+            sp.GetRequiredService<IModbusClient>(),
+            auditLog: sp.GetRequiredService<IAuditLog>(),
+            isRunningProvider: () => AppCommandGate.ReadRunState(
+                sp.GetRequiredService<IDeviceStateStore>().Current.Values)));
+
         // Coordinator + runtime (starts the background loops as the hosted service).
         services.AddSingleton(sp => new SnapshotCoordinator(
             sp.GetRequiredService<SnapshotMerger>(),
@@ -216,6 +232,14 @@ public partial class App : Application
             sp.GetRequiredService<ICommandGate>(),
             BuildWritableParameters()));
         services.AddSingleton<ParametersView>();
+
+        // Diagnostic terminal page (design §6.5): FC01/02/03/04 reads + FC05/06 writes through the injected
+        // DiagnosticTerminalService. It only consumes the link state for the header / write pre-gate, so it
+        // is wired exactly like the other pages.
+        services.AddSingleton(sp => new DiagnosticTerminalViewModel(
+            sp.GetRequiredService<DiagnosticTerminalService>(),
+            sp.GetRequiredService<ICommandGate>()));
+        services.AddSingleton<DiagnosticTerminalView>();
 
         // I/O diagnostics page (design §6.6): read-only X/Y/M presentation. The point map supplies the raw X/Y
         // coil names (config/point-map.simulation.json); the view model matches the snapshot where a mirror
