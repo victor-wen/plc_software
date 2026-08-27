@@ -43,16 +43,19 @@ public sealed class CommandService : ICommandService
     private readonly IModbusClient _client;
     private readonly ICommandGate _gate;
     private readonly IAsyncDelay _delay;
+    private readonly IAuditLog? _auditLog;
     private readonly byte _slaveId;
     private readonly TimeSpan _pulseWidth;
 
-    /// <summary>Builds the service over the shared single-queue client. <c>slaveId</c> defaults to 1 (the point-map target).</summary>
-    public CommandService(IModbusClient client, ICommandGate gate, IAsyncDelay delay, byte slaveId = 1)
+    /// <summary>Builds the service over the shared single-queue client. <c>slaveId</c> defaults to 1 (the point-map target);
+    /// an optional <see cref="IAuditLog"/> records 屏蔽 (bypass) writes (design audit).</summary>
+    public CommandService(IModbusClient client, ICommandGate gate, IAsyncDelay delay, byte slaveId = 1, IAuditLog? auditLog = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
         _delay = delay ?? throw new ArgumentNullException(nameof(delay));
         _slaveId = slaveId;
+        _auditLog = auditLog;
         _pulseWidth = PulseWidth;
     }
 
@@ -94,6 +97,13 @@ public sealed class CommandService : ICommandService
 
                 case CommandKind.Holding:
                     await WriteCoilAsync(spec.Address, request.Value, cancellationToken);
+                    // 屏蔽 (M110/M111) writes are audited (design审计). Recorded only when the write
+                    // commits; a recording failure must not turn the succeeded write into a failure.
+                    if (spec.IsMask)
+                    {
+                        RecordAudit(new AuditEvent(AuditCategory.Mask, $"M{spec.Address}", request.Value));
+                    }
+
                     break;
 
                 case CommandKind.Jog:
@@ -175,12 +185,29 @@ public sealed class CommandService : ICommandService
             [CommandTarget.ManualWidthMinus] = new(Address: 107, CommandKind.Jog),
             [CommandTarget.ManualBeltJog] = new(Address: 108, CommandKind.Jog),
             [CommandTarget.ManualStopper] = new(Address: 109, CommandKind.Jog),
-            [CommandTarget.LightCurtainBypass] = new(Address: 110, CommandKind.Holding),
-            [CommandTarget.DoorBypass] = new(Address: 111, CommandKind.Holding),
+            [CommandTarget.LightCurtainBypass] = new(Address: 110, CommandKind.Holding, IsMask: true),
+            [CommandTarget.DoorBypass] = new(Address: 111, CommandKind.Holding, IsMask: true),
         };
 
     /// <summary>
     /// Resolved address (protocol/coil space, M100 → 100 … M111 → 111) and write kind for a command target.
+    /// <paramref name="IsMask"/> marks the 屏蔽 (bypass) targets that must be audited.
     /// </summary>
-    private readonly record struct CommandSpec(ushort Address, CommandKind Kind);
+    private readonly record struct CommandSpec(ushort Address, CommandKind Kind, bool IsMask = false);
+
+    /// <summary>
+    /// Records an audit event best-effort. A producing write has already succeeded, so a throwing audit
+    /// implementation must never turn that success into a command failure (design audit contract).
+    /// </summary>
+    private void RecordAudit(AuditEvent auditEvent)
+    {
+        try
+        {
+            _auditLog?.Record(auditEvent);
+        }
+        catch
+        {
+            // Audit is an observer; swallow — the write outcome is already decided.
+        }
+    }
 }

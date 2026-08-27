@@ -71,15 +71,18 @@ public sealed class ParameterService
     private readonly IModbusClient _client;
     private readonly ICommandGate _gate;
     private readonly IReadOnlyDictionary<string, ParameterDefinition> _writable;
+    private readonly IAuditLog? _auditLog;
     private readonly byte _slaveId;
 
     /// <summary>Builds the service over the shared single-queue client. <paramref name="writableParameters"/>
-    /// is the injected set of writable engineering parameters (with their configured ranges).</summary>
+    /// is the injected set of writable engineering parameters (with their configured ranges); an optional
+    /// <see cref="IAuditLog"/> records 参数 (parameter) writes (design audit).</summary>
     public ParameterService(
         IModbusClient client,
         ICommandGate gate,
         IEnumerable<ParameterDefinition> writableParameters,
-        byte slaveId = 1)
+        byte slaveId = 1,
+        IAuditLog? auditLog = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
@@ -90,6 +93,7 @@ public sealed class ParameterService
 
         _writable = writableParameters.ToDictionary(p => p.Name, StringComparer.Ordinal);
         _slaveId = slaveId;
+        _auditLog = auditLog;
     }
 
     /// <summary>
@@ -143,6 +147,10 @@ public sealed class ParameterService
         {
             await _client.WriteSingleRegisterAsync(_slaveId, definition.Address, (ushort)value, cancellationToken);
 
+            // A 参数 write that reached the register is audited (design审计). Recorded only once the write
+            // commits; a recording failure must not turn the committed write into a failure.
+            RecordAudit(new AuditEvent(AuditCategory.Parameter, parameterName, value));
+
             var readBack = await ReadBackAsync(definition.Address, cancellationToken);
 
             if (readBack == value)
@@ -178,5 +186,22 @@ public sealed class ParameterService
         }
 
         return registers[0];
+    }
+
+    /// <summary>
+    /// Records an audit event best-effort. The producing write has already been committed to the register,
+    /// so a throwing audit implementation must never turn that committed write into a command failure
+    /// (design audit contract).
+    /// </summary>
+    private void RecordAudit(AuditEvent auditEvent)
+    {
+        try
+        {
+            _auditLog?.Record(auditEvent);
+        }
+        catch
+        {
+            // Audit is an observer; swallow — the write outcome is already decided.
+        }
     }
 }
