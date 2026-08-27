@@ -6,9 +6,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using PlcSoftware.App.Behaviors;
+using PlcSoftware.App.Services;
 using PlcSoftware.App.ViewModels;
 using PlcSoftware.App.Views;
 using PlcSoftware.Core.Abstractions;
+using PlcSoftware.Core.Configuration;
 using PlcSoftware.Core.Models;
 using PlcSoftware.Core.Services;
 
@@ -232,8 +234,13 @@ public class ManualReleaseTriggerTests
             gate,
             Array.Empty<ParameterDefinition>());
         var parametersView = new ParametersView();
+        var ioDiagnosticsVm = new IoDiagnosticsViewModel(Array.Empty<PointDefinition>());
+        var ioDiagnosticsView = new IoDiagnosticsView();
+        var connectionSettingsVm = new ConnectionSettingsViewModel(new TrivialConnectionTester());
+        var connectionSettingsView = new ConnectionSettingsView();
         return new MainWindow(overviewVm, overviewView, operationVm, operationBar, manualVm, manualView,
-            parametersVm, parametersView);
+            parametersVm, parametersView, ioDiagnosticsVm, ioDiagnosticsView, connectionSettingsVm,
+            connectionSettingsView);
     }
 
     private static Button CreateJogButton(ManualViewModel vm)
@@ -314,5 +321,13 @@ public class ManualReleaseTriggerTests
             => Task.CompletedTask;
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    /// <summary>No-op <see cref="IConnectionTester"/> so the <see cref="MainWindow"/> can be constructed over a
+    /// connection-settings view model in these WPF-trigger tests (the connection tests are never exercised here).</summary>
+    private sealed class TrivialConnectionTester : IConnectionTester
+    {
+        public Task TestAsync(SerialConnectionOptions options, CancellationToken cancellationToken)
+            => Task.CompletedTask;
     }
 }

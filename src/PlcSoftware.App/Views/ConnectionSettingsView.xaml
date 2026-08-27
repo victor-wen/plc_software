@@ -1,0 +1,195 @@
+<UserControl x:Class="PlcSoftware.App.Views.ConnectionSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- Communication settings page (design §6.8): serial options editing, validation and a connection test.
+             The editable form is disabled while the link is Online (修改配置前先断开当前连接); the header stays
+             readable so the online/offline hint never greys. -->
+        <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="4,12,4,4" />
+        </Style>
+
+        <Style x:Key="CardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="Margin" Value="4" />
+        </Style>
+
+        <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource PrimaryForegroundBrush}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="FieldBoxStyle" TargetType="TextBox">
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Width" Value="180" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="FieldComboStyle" TargetType="ComboBox">
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Width" Value="180" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#EDEFF2" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryForegroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.92" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Header: connection + the disconnect-first hint (design §6.8). -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="4,0,4,8">
+                <TextBlock Text="通信设置"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource PrimaryForegroundBrush}" />
+                <TextBlock Text="连接："
+                           Style="{StaticResource SectionLabelStyle}"
+                           Margin="16,6,2,0" />
+                <TextBlock Text="{Binding ConnectionStatusText}" Margin="0,6,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource StatusAlertBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource StatusOkBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="{Binding OnlineEditHintText}"
+                           Style="{StaticResource SectionLabelStyle}"
+                           Margin="40,6,0,0"
+                           Foreground="{StaticResource StatusWarnBrush}"
+                           Visibility="{Binding IsOnline, Converter={StaticResource BooleanToVisibilityConverter}}" />
+            </StackPanel>
+
+            <!-- Editable serial options (design §6.8), disabled while Online. -->
+            <Border Grid.Row="1" Style="{StaticResource CardStyle}">
+                <StackPanel IsEnabled="{Binding IsFormEnabled}">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="串口" Style="{StaticResource FieldLabelStyle}" Width="80" />
+                        <TextBox Text="{Binding PortName, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FieldBoxStyle}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="波特率" Style="{StaticResource FieldLabelStyle}" Width="80" />
+                        <TextBox Text="{Binding BaudRateText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FieldBoxStyle}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="数据位" Style="{StaticResource FieldLabelStyle}" Width="80" />
+                        <ComboBox ItemsSource="{Binding DataBitsOptions}" SelectedItem="{Binding DataBits}" Style="{StaticResource FieldComboStyle}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="校验" Style="{StaticResource FieldLabelStyle}" Width="80" />
+                        <ComboBox ItemsSource="{Binding ParityOptions}" SelectedItem="{Binding SelectedParity}" Style="{StaticResource FieldComboStyle}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="停止位" Style="{StaticResource FieldLabelStyle}" Width="80" />
+                        <ComboBox ItemsSource="{Binding StopBitsOptions}" SelectedItem="{Binding SelectedStopBits}" Style="{StaticResource FieldComboStyle}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="站号" Style="{StaticResource FieldLabelStyle}" Width="80" />
+                        <TextBox Text="{Binding SlaveIdText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FieldBoxStyle}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="超时 (ms)" Style="{StaticResource FieldLabelStyle}" Width="80" />
+                        <TextBox Text="{Binding TimeoutMsText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FieldBoxStyle}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="重试" Style="{StaticResource FieldLabelStyle}" Width="80" />
+                        <TextBox Text="{Binding RetriesText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FieldBoxStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Validation results (design §6.8). -->
+            <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="4,8,4,4">
+                <TextBlock Text="{Binding ValidationText}"
+                           FontSize="12"
+                           Foreground="{StaticResource StatusAlertBrush}"
+                           TextWrapping="Wrap">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <Trigger Property="Text" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Border>
+
+            <!-- Connection test (design §6.8: 支持连接测试, behind explicit user action) + result. -->
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="4,4,4,4">
+                <Button Content="测试连接"
+                        Style="{StaticResource ActionButtonStyle}"
+                        Command="{Binding TestConnectionCommand}" />
+                <TextBlock Text="{Binding TestResultText}"
+                           Style="{StaticResource SectionLabelStyle}"
+                           Margin="16,10,0,0"
+                           Foreground="{StaticResource StatusNeutralBrush}" />
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

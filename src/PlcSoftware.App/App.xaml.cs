@@ -79,6 +79,16 @@ public partial class App : Application
         supervisor.StateChanged += state => RunOnUi(() => parameters.ApplyConnectionState(state));
         store.SnapshotChanged += (_, snapshot) => RunOnUi(() => parameters.ApplySnapshot(snapshot));
 
+        // I/O diagnostics page (design §6.6): read-only X/Y/M table fed only by the snapshot + link state.
+        var ioDiagnostics = _host.Services.GetRequiredService<IoDiagnosticsViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => ioDiagnostics.ApplyConnectionState(state));
+        store.SnapshotChanged += (_, snapshot) => RunOnUi(() => ioDiagnostics.ApplySnapshot(snapshot));
+
+        // Communication settings page (design §6.8): consumes only the link state (to lock the form while
+        // online). Its connection test is a self-contained explicit action — no snapshot needed.
+        var connectionSettings = _host.Services.GetRequiredService<ConnectionSettingsViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => connectionSettings.ApplyConnectionState(state));
+
         // Seed once after subscribing so an event raised before the subscription (or before the host start
         // finished) is not lost — the first StateChanged/SnapshotChanged/StatusChanged can fire while the
         // hosted loops are still starting, before the wiring above is in place. Latest state wins over any
@@ -95,6 +105,9 @@ public partial class App : Application
         manual.ApplySnapshot(store.Current);
         parameters.ApplyConnectionState(supervisor.CurrentState);
         parameters.ApplySnapshot(store.Current);
+        ioDiagnostics.ApplyConnectionState(supervisor.CurrentState);
+        ioDiagnostics.ApplySnapshot(store.Current);
+        connectionSettings.ApplyConnectionState(supervisor.CurrentState);
 
         var window = _host.Services.GetRequiredService<MainWindow>();
         window.DataContext = viewModel;
@@ -121,6 +134,8 @@ public partial class App : Application
         var configDir = Path.Combine(AppContext.BaseDirectory, "config");
         var loader = new JsonConfigurationLoader();
         var faults = loader.LoadFaults(Path.Combine(configDir, "faults.json"));
+        var serialOptions = loader.LoadSerialOptions(Path.Combine(configDir, "appsettings.json"));
+        var pointMap = loader.LoadPointMap(Path.Combine(configDir, "point-map.simulation.json"));
 
         // Modbus transport: in-memory simulation behind the shared single-flight queue (design §5.1). The
         // concrete InMemoryModbusClient is registered so the demo scenario runner can drive its memory
@@ -200,6 +215,23 @@ public partial class App : Application
             sp.GetRequiredService<ICommandGate>(),
             BuildWritableParameters()));
         services.AddSingleton<ParametersView>();
+
+        // I/O diagnostics page (design §6.6): read-only X/Y/M presentation. The point map supplies the raw X/Y
+        // coil names (config/point-map.simulation.json); the view model matches the snapshot where a mirror
+        // exists and shows 未上报 otherwise. No write path (Gate 7).
+        services.AddSingleton(new IoDiagnosticsViewModel(pointMap));
+        services.AddSingleton<IoDiagnosticsView>();
+
+        // Communication settings page (design §6.8): serial options editing, validation and a connection test.
+        // The connection test is the ONLY real-port touch — it stays behind an explicit user action and probes
+        // through the SerialPortFactory seam (IConnectionTester); the production transport (polling/supervision)
+        // is NOT wired here (the demo runs on the in-memory simulation). Editing is locked while Online.
+        services.AddSingleton<IConnectionTester, SerialConnectionTester>();
+        services.AddSingleton(sp => new ConnectionSettingsViewModel(
+            sp.GetRequiredService<IConnectionTester>(),
+            serialOptions));
+        services.AddSingleton<ConnectionSettingsView>();
+
         services.AddSingleton<MainWindow>();
     }
 

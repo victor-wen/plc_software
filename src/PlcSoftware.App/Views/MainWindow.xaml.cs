@@ -11,9 +11,10 @@ namespace PlcSoftware.App.Views;
 /// A small dispatcher timer drives the status-bar clock (design §6.1 当前时间).
 ///
 /// <para>The 总览 nav entry shows the overview page in <see cref="PageHost"/>, the 操作 entry shows the
-/// operation zone (design §6.3), the 手动 entry shows the manual page (design §6.4) and the 参数 entry shows
-/// the parameter page (design §6.5); each page's data context is its injected view model. The remaining nav
-/// buttons (I/O 诊断 / 报警与历史) are still visual placeholders — their pages belong to later tasks.</para>
+/// operation zone (design §6.3), the 手动 entry shows the manual page (design §6.4), the 参数 entry shows the
+/// parameter page (design §6.5), the I/O 诊断 entry shows the read-only I/O table (design §6.6) and the 通信设置
+/// entry shows the communication-settings page (design §6.8); each page's data context is its injected view
+/// model. The remaining nav button (报警与历史) is still a visual placeholder — its page belongs to a later task.</para>
 ///
 /// <para><b>App-exit jog release is best-effort (design §6.4 应用退出).</b> On <see cref="Window.Closing"/> the
 /// manual jogs are released through a bounded await (<see cref="OnWindowClosing"/>) so the M106-M109 false
@@ -38,6 +39,10 @@ public partial class MainWindow : Window
     private readonly ManualViewModel _manualViewModel;
     private readonly ParametersView _parametersView;
     private readonly ParametersViewModel _parametersViewModel;
+    private readonly IoDiagnosticsView _ioDiagnosticsView;
+    private readonly IoDiagnosticsViewModel _ioDiagnosticsViewModel;
+    private readonly ConnectionSettingsView _connectionSettingsView;
+    private readonly ConnectionSettingsViewModel _connectionSettingsViewModel;
 
     /// <summary>The window-close jog-release task, awaited (bounded) in <see cref="OnWindowClosing"/> so the
     /// M106-M109 false write gets a chance to land before the host stops in <c>App.OnExit</c>.</summary>
@@ -51,7 +56,11 @@ public partial class MainWindow : Window
         ManualViewModel manualViewModel,
         ManualView manualView,
         ParametersViewModel parametersViewModel,
-        ParametersView parametersView)
+        ParametersView parametersView,
+        IoDiagnosticsViewModel ioDiagnosticsViewModel,
+        IoDiagnosticsView ioDiagnosticsView,
+        ConnectionSettingsViewModel connectionSettingsViewModel,
+        ConnectionSettingsView connectionSettingsView)
     {
         InitializeComponent();
 
@@ -63,6 +72,10 @@ public partial class MainWindow : Window
         _manualView = manualView ?? throw new ArgumentNullException(nameof(manualView));
         _parametersViewModel = parametersViewModel ?? throw new ArgumentNullException(nameof(parametersViewModel));
         _parametersView = parametersView ?? throw new ArgumentNullException(nameof(parametersView));
+        _ioDiagnosticsViewModel = ioDiagnosticsViewModel ?? throw new ArgumentNullException(nameof(ioDiagnosticsViewModel));
+        _ioDiagnosticsView = ioDiagnosticsView ?? throw new ArgumentNullException(nameof(ioDiagnosticsView));
+        _connectionSettingsViewModel = connectionSettingsViewModel ?? throw new ArgumentNullException(nameof(connectionSettingsViewModel));
+        _connectionSettingsView = connectionSettingsView ?? throw new ArgumentNullException(nameof(connectionSettingsView));
 
         // On window close (design §6.4 应用退出) best-effort release every jog coil so no manual coil is left
         // latched. The release is started here and awaited (bounded) so it can land before App.OnExit stops
@@ -143,6 +156,32 @@ public partial class MainWindow : Window
         }
 
         PageHost.Content = _parametersView;
+    }
+
+    /// <summary>Navigates to the I/O diagnostics page (design §6.6) by hosting the injected view in the page
+    /// region and binding it to the I/O diagnostics view model.</summary>
+    private void OnIoDiagnosticsClicked(object sender, RoutedEventArgs e)
+    {
+        ReleaseManualJogsOnSwitch();
+        if (_ioDiagnosticsView.DataContext is null)
+        {
+            _ioDiagnosticsView.DataContext = _ioDiagnosticsViewModel;
+        }
+
+        PageHost.Content = _ioDiagnosticsView;
+    }
+
+    /// <summary>Navigates to the communication-settings page (design §6.8) by hosting the injected view in the
+    /// page region and binding it to the connection-settings view model.</summary>
+    private void OnConnectionSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        ReleaseManualJogsOnSwitch();
+        if (_connectionSettingsView.DataContext is null)
+        {
+            _connectionSettingsView.DataContext = _connectionSettingsViewModel;
+        }
+
+        PageHost.Content = _connectionSettingsView;
     }
 
     /// <summary>Releases every manual jog coil when navigating away from the manual page so a press-and-hold
