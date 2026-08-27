@@ -43,6 +43,8 @@ public partial class MainWindow : Window
     private readonly IoDiagnosticsViewModel _ioDiagnosticsViewModel;
     private readonly ConnectionSettingsView _connectionSettingsView;
     private readonly ConnectionSettingsViewModel _connectionSettingsViewModel;
+    private readonly HistoryView _historyView;
+    private readonly HistoryViewModel _historyViewModel;
 
     /// <summary>The window-close jog-release task, awaited (bounded) in <see cref="OnWindowClosing"/> so the
     /// M106-M109 false write gets a chance to land before the host stops in <c>App.OnExit</c>.</summary>
@@ -60,7 +62,9 @@ public partial class MainWindow : Window
         IoDiagnosticsViewModel ioDiagnosticsViewModel,
         IoDiagnosticsView ioDiagnosticsView,
         ConnectionSettingsViewModel connectionSettingsViewModel,
-        ConnectionSettingsView connectionSettingsView)
+        ConnectionSettingsView connectionSettingsView,
+        HistoryViewModel historyViewModel,
+        HistoryView historyView)
     {
         InitializeComponent();
 
@@ -76,6 +80,8 @@ public partial class MainWindow : Window
         _ioDiagnosticsView = ioDiagnosticsView ?? throw new ArgumentNullException(nameof(ioDiagnosticsView));
         _connectionSettingsViewModel = connectionSettingsViewModel ?? throw new ArgumentNullException(nameof(connectionSettingsViewModel));
         _connectionSettingsView = connectionSettingsView ?? throw new ArgumentNullException(nameof(connectionSettingsView));
+        _historyViewModel = historyViewModel ?? throw new ArgumentNullException(nameof(historyViewModel));
+        _historyView = historyView ?? throw new ArgumentNullException(nameof(historyView));
 
         // On window close (design §6.4 应用退出) best-effort release every jog coil so no manual coil is left
         // latched. The release is started here and awaited (bounded) so it can land before App.OnExit stops
@@ -188,4 +194,17 @@ public partial class MainWindow : Window
     /// jog is not left latched by the page switch (design §6.4 切页). Best-effort; the D106 watchdog (§5.2)
     /// is the offline fallback.</summary>
     private void ReleaseManualJogsOnSwitch() => _ = _manualViewModel.ReleaseAllJogsAsync();
+
+    /// <summary>Navigates to the 报警与历史 page (design §7) by hosting the injected view in the page region
+    /// and binding it to the history view model.</summary>
+    private void OnHistoryClicked(object sender, RoutedEventArgs e)
+    {
+        ReleaseManualJogsOnSwitch();
+        if (_historyView.DataContext is null)
+        {
+            _historyView.DataContext = _historyViewModel;
+        }
+
+        PageHost.Content = _historyView;
+    }
 }

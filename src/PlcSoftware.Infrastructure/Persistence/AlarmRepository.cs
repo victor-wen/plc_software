@@ -87,4 +87,21 @@ public sealed class AlarmRepository
     /// <summary>Returns all open (not yet recovered) alarm rows for inspection.</summary>
     public List<Dictionary<string, object?>> QueryOpen()
         => _db.Query("SELECT id, code, message, opened_at, closed_at FROM alarms WHERE closed_at IS NULL");
+
+    /// <summary>
+    /// Returns opened_at rows within [from, to] (either bound may be null = unbounded), newest first.
+    /// </summary>
+    public List<Dictionary<string, object?>> QueryOpened(DateTime? from, DateTime? to)
+        => _db.Query(
+            """
+            SELECT id, code, message, opened_at, closed_at FROM alarms
+            WHERE (@from IS NULL OR opened_at >= @from)
+              AND (@to IS NULL OR opened_at <= @to)
+            ORDER BY opened_at DESC, id DESC
+            """,
+            command =>
+            {
+                command.Parameters.AddWithValue("@from", from?.ToString("o") ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@to", to?.ToString("o") ?? (object)DBNull.Value);
+            });
 }

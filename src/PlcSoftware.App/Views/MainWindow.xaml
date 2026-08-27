@@ -27,7 +27,7 @@
                 <Button Content="参数" Style="{StaticResource NavButtonStyle}" Click="OnParametersClicked" />
                 <Button Content="I/O 诊断" Style="{StaticResource NavButtonStyle}" Click="OnIoDiagnosticsClicked" />
                 <Button Content="通信设置" Style="{StaticResource NavButtonStyle}" Click="OnConnectionSettingsClicked" />
-                <Button Content="报警与历史" Style="{StaticResource NavButtonStyle}" />
+                <Button Content="报警与历史" Style="{StaticResource NavButtonStyle}" Click="OnHistoryClicked" />
             </StackPanel>
         </Border>
 

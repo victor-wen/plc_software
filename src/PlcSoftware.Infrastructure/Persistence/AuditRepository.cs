@@ -41,4 +41,21 @@ public sealed class AuditRepository
         => _db.Query(
             "SELECT category, target, value_text, message_text, recorded_at FROM audit_events ORDER BY id DESC LIMIT @limit",
             command => command.Parameters.AddWithValue("@limit", count));
+
+    /// <summary>
+    /// Returns recorded_at rows within [from, to] (either bound may be null = unbounded), newest first.
+    /// </summary>
+    public List<Dictionary<string, object?>> QueryRange(DateTime? from, DateTime? to)
+        => _db.Query(
+            """
+            SELECT category, target, value_text, message_text, recorded_at FROM audit_events
+            WHERE (@from IS NULL OR recorded_at >= @from)
+              AND (@to IS NULL OR recorded_at <= @to)
+            ORDER BY id DESC
+            """,
+            command =>
+            {
+                command.Parameters.AddWithValue("@from", from?.ToString("o") ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@to", to?.ToString("o") ?? (object)DBNull.Value);
+            });
 }

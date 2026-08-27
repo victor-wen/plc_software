@@ -238,9 +238,11 @@ public class ManualReleaseTriggerTests
         var ioDiagnosticsView = new IoDiagnosticsView();
         var connectionSettingsVm = new ConnectionSettingsViewModel(new TrivialConnectionTester());
         var connectionSettingsView = new ConnectionSettingsView();
+        var historyVm = new HistoryViewModel((f, t) => new(), (f, t) => new());
+        var historyView = new HistoryView();
         return new MainWindow(overviewVm, overviewView, operationVm, operationBar, manualVm, manualView,
             parametersVm, parametersView, ioDiagnosticsVm, ioDiagnosticsView, connectionSettingsVm,
-            connectionSettingsView);
+            connectionSettingsView, historyVm, historyView);
     }
 
     private static Button CreateJogButton(ManualViewModel vm)

@@ -233,6 +233,40 @@ public partial class App : Application
             serialOptions));
         services.AddSingleton<ConnectionSettingsView>();
 
+        // 报警与历史 page (design §7): date-range query of persisted alarm + host-write audit rows and CSV
+        // export. The HistoryViewModel is WPF-free and takes injected query functions; persistence is via the
+        // SqliteDatabase (local history file). A database failure surfaces on the page's status text — it can
+        // never stop the polling loops (the database is NOT on the polling path).
+        services.AddSingleton(sp =>
+        {
+            var dbPath = Path.Combine(AppContext.BaseDirectory, "data", "history.db");
+            var db = new PlcSoftware.Infrastructure.Persistence.SqliteDatabase(dbPath);
+            db.EnsureSchema();
+            var alarms = new PlcSoftware.Infrastructure.Persistence.AlarmRepository(db);
+            var audits = new PlcSoftware.Infrastructure.Persistence.AuditRepository(db);
+            return new HistoryViewModel(
+                queryAlarms: (from, to) => alarms.QueryOpened(from, to)
+                    .Select(r => new HistoryRow(
+                        Timestamp: DateTime.TryParse(r["opened_at"] as string, null, System.Globalization.DateTimeStyles.RoundtripKind, out var op)
+                            ? op
+                            : DateTime.Now,
+                        Kind: "报警",
+                        Description: $"{r["code"]} {r["message"]}",
+                        Value: r["closed_at"] is string ca ? $"已恢复 {ca}" : "活动中"))
+                    .ToList(),
+                queryAudits: (from, to) => audits.QueryRange(from, to)
+                    .Select(r => new HistoryRow(
+                        Timestamp: DateTime.TryParse(r["recorded_at"] as string, null, System.Globalization.DateTimeStyles.RoundtripKind, out var rt)
+                            ? rt
+                            : DateTime.Now,
+                        Kind: r["category"]?.ToString() ?? "操作",
+                        Description: r["target"]?.ToString() ?? "",
+                        Value: r["value_text"]?.ToString()))
+                    .ToList(),
+                saveFile: null);
+        });
+        services.AddSingleton<HistoryView>();
+
         services.AddSingleton<MainWindow>();
     }
 
