@@ -1,0 +1,77 @@
+name: .NET CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-tests:
+    name: Core tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore (locked)
+        run: dotnet restore PlcSoftware.sln --locked-mode
+
+      - name: Build Core + Infrastructure (Release)
+        run: dotnet build src/PlcSoftware.Core/PlcSoftware.Core.csproj src/PlcSoftware.Infrastructure/PlcSoftware.Infrastructure.csproj -c Release --no-restore
+
+      - name: Test Core
+        run: dotnet test tests/PlcSoftware.Core.Tests/PlcSoftware.Core.Tests.csproj -c Release --no-build --no-restore
+
+      - name: Test Infrastructure
+        run: dotnet test tests/PlcSoftware.Infrastructure.Tests/PlcSoftware.Infrastructure.Tests.csproj -c Release --no-build --no-restore
+
+  windows-build:
+    name: Windows build & publish
+    needs: core-tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore (locked)
+        run: dotnet restore PlcSoftware.sln --locked-mode
+
+      - name: Build (Release)
+        run: dotnet build PlcSoftware.sln -c Release --no-restore
+
+      - name: Test Core
+        run: dotnet test tests/PlcSoftware.Core.Tests/PlcSoftware.Core.Tests.csproj -c Release --no-build --no-restore --logger trx --results-directory TestResults
+
+      - name: Test Infrastructure
+        run: dotnet test tests/PlcSoftware.Infrastructure.Tests/PlcSoftware.Infrastructure.Tests.csproj -c Release --no-build --no-restore --logger trx --results-directory TestResults
+
+      - name: Test App
+        run: dotnet test tests/PlcSoftware.App.Tests/PlcSoftware.App.Tests.csproj -c Release --no-build --no-restore --logger trx --results-directory TestResults
+
+      - name: Publish App (win-x64 self-contained)
+        run: dotnet publish src/PlcSoftware.App/PlcSoftware.App.csproj -c Release -r win-x64 --self-contained true -p:EnableWindowsTargeting=true --no-restore -o publish
+
+      - name: Upload publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plc-software-win-x64
+          path: publish
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/**/*.trx
