@@ -16,7 +16,7 @@
 
         <!-- Navigation bar (placeholder for later page navigation). -->
         <Border Grid.Row="0" Style="{StaticResource NavBarStyle}">
-            <StackPanel Orientation="Horizontal">
+            <StackPanel Orientation="Horizontal" x:Name="NavButtonsPanel">
                 <TextBlock Text="PLC 上位机监控系统"
                            Style="{StaticResource StatusTextStyle}"
                            FontWeight="SemiBold"
@@ -29,6 +29,8 @@
                 <Button Content="调试终端" Style="{StaticResource NavButtonStyle}" Click="OnDiagnosticTerminalClicked" />
                 <Button Content="通信设置" Style="{StaticResource NavButtonStyle}" Click="OnConnectionSettingsClicked" />
                 <Button Content="报警与历史" Style="{StaticResource NavButtonStyle}" Click="OnHistoryClicked" />
+                <!-- Configurable pages (design §7) are appended here at startup when config/ui-layout.json exists. -->
+                <StackPanel Orientation="Horizontal" x:Name="ConfigNavItems"/>
             </StackPanel>
         </Border>
 

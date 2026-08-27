@@ -146,3 +146,77 @@ K1-K7 故障代码与提示文字列表。`code` 对应 `D110` 故障寄存器�
 1. 配置文件位于输出目录的 `config` 子目录（构建时自动从仓库 `config/` 复制）。
 2. 修改配置后需重新构建，或直接编辑输出目录 `bin/.../config/` 下的 JSON（改前先退出程序）。
 3. 应用默认以**模拟模式**启动，见 `docs/simulation-guide.md`；串口连接与联调见 `docs/operator-guide.md`。
+
+---
+
+## 5. `config/ui-layout.json` — 模块化可配置界面（设计 §7）
+
+本文件把整个操作界面描述为**可配置页面 + 模块**（类似组态软件的画布）：全局壳（标题/logo/登录规则）、有序页面列表，每页由若干**模块**构成，渲染器把模块放入五个固定区域（顶部标题栏 / 左侧菜单 / 内容区 / 右侧导航 / 底部命令排）。**文件存在时**应用以配置的界面启动（导航栏追加每页一个入口，默认显示 `app.defaultPage`）；**文件不存在时**回退到旧的硬编码导航与 8 个页面（兼容迁移）。文件缺失即回退；文件存在但 JSON 非法或校验失败则**启动即报错**（界面完全由配置决定，不允许静默降级）。
+
+```json
+{
+  "app": {
+    "title": "自动化设备",
+    "logo": "VISA",
+    "defaultPage": "login",
+    "users": [ { "username": "admin", "password": "1234" } ],
+    "loginSuccess": { "kind": "navigate", "page": "position-loading" }
+  },
+  "pages": [
+    {
+      "id": "login",
+      "title": "登录",
+      "modules": [
+        { "type": "header" },
+        { "type": "menu", "buttons": [ { "text": "自动模式", "action": { "kind": "command", "writes": [ { "target": "AutoMode" }, { "target": "BypassMode", "value": false } ] } } ] },
+        { "type": "loginForm" },
+        { "type": "nav", "buttons": [ { "text": "返回", "action": { "kind": "back" } } ] },
+        { "type": "commandBar", "buttons": [ { "text": "启动", "action": { "kind": "command", "writes": [ { "target": "Start" } ] } } ] }
+      ]
+    }
+  ]
+}
+```
+
+### 5.1 字段一览
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `app.title` | string | 窗口/页面标题（默认 `PLC 上位机监控系统`）。 |
+| `app.logo` | string | 标题栏角标文字（如 `VISA`）。 |
+| `app.defaultPage` | string | 启动时显示的页面 id；缺省为第一页。 |
+| `app.users` | array | 登录凭据列表（`username`/`password`）。**为空数组时登录表单接受任意输入**（模拟/演示模式）。 |
+| `app.loginSuccess` | action | 登录成功后的动作（通常 `navigate` 到主页面）。 |
+| `pages[].id` | string | 页面唯一 id（`navigate` 目标与导航栏入口）。 |
+| `pages[].title` | string | 页面标题（导航栏显示；缺省用 id）。 |
+| `pages[].modules` | array | 页面模块列表（见 5.2）。 |
+
+### 5.2 模块类型
+
+| `type` | 区域 | 说明 |
+|---|---|---|
+| `header` | 顶部标题栏 | 显示 `title`（缺省用 `app.title`）与 `logo`。每页最多一个。 |
+| `menu` | 左侧竖排按钮组 | `buttons` 数组（`text` + `action`）。 |
+| `nav` | 右侧竖排导航组 | `buttons` 数组（型号选择/辊道/AGV/上一页/下一页/返回…）。 |
+| `commandBar` | 底部横排命令排 | `buttons` 数组（启动/停止/复位/急停…）。 |
+| `loginForm` | 内容区 | 用户名/密码/确认表单；每页最多一个。 `app.users` 为空则放行。 |
+| `parameterGroup` | 内容区 | 位置参数表：`groups[].title` + `groups[].rows[]`（`axis` + `position`/`speed` 字段）。每个字段：`register`（可写参数名，如 `D201`）、`label`、`unit`、`min`/`max`。写入走 `ParameterService`（写后读回一致才成功，范围未配置/非法、离线均拒绝）。 |
+| `pageHost` | 内容区 | 宿主旧版（硬编码 XAML）页面：`hostedView` 取 `OverviewView` / `OperationBar` / `ManualView` / `ParametersView` / `IoDiagnosticsView` / `DiagnosticTerminalView` / `ConnectionSettingsView` / `HistoryView`。 |
+
+### 5.3 按钮动作 `action`
+
+| `kind` | 附加字段 | 说明 |
+|---|---|---|
+| `none` | — | 无动作（占位按钮）。 |
+| `navigate` | `page` | 切换到指定页面（目标必须存在）。 |
+| `command` | `writes[]` | 依次发送 `target`（`CommandTarget` 枚举名：`Start`/`Stop`/`Reset`/`EStopRequest`/`AutoMode`/`BypassMode`/…）+ `value`（保持写入值；脉冲忽略）。多个 writes 可组合模式互斥对（自动 = `AutoMode:true` + `BypassMode:false`；手动 = 两个 false）。 |
+| `login` | — | 跳转到含 `loginForm` 模块的页面。 |
+| `logout` | — | 退出登录（清除全部页面登录态）。 |
+| `up` / `down` | — | 页面列表顺序的上一页 / 下一页。 |
+| `back` | — | 返回上一次访问的页面。 |
+
+### 5.4 注意事项
+
+- 页面 id 必须唯一；`navigate` 目标与 `app.defaultPage` 必须存在；`command` 的 `target` 必须是合法 `CommandTarget`；校验失败会在启动时抛错并列出全部问题。
+- `parameterGroup` 的 `register` 必须落在应用的可写参数集内（当前为 `D201`/`D202`/`D204`/`D205`，见 `App.BuildWritableParameters`）；未在集合内的寄存器写入会被 `ParameterService` 拒绝。
+- 底部命令排目前无「暂停」目标（`CommandTarget` 无对应项）；需要时可扩展枚举或在 `docs/configuration.md` 说明的映射中增加。

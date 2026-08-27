@@ -1,7 +1,13 @@
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 using PlcSoftware.App.ViewModels;
+using PlcSoftware.Core.Abstractions;
+using PlcSoftware.Core.Configuration;
+using PlcSoftware.Core.Services;
 
 namespace PlcSoftware.App.Views;
 
@@ -23,7 +29,7 @@ namespace PlcSoftware.App.Views;
 /// <em>not</em> guaranteed to finish exactly once — if it cannot complete (e.g. a stalled transport), the
 /// D106 watchdog (design §5.2) is the designated fallback for a latched coil. This is by design, not a bug.</para>
 /// </summary>
-public partial class MainWindow : Window
+public partial class MainWindow : Window, IConfigurableUiNavigator
 {
     /// <summary>The grace window given to the exit-time jog release before shutdown is allowed to proceed.
     /// App.OnExit stops the hosted runtime synchronously immediately after the window closes, so the release
@@ -49,6 +55,16 @@ public partial class MainWindow : Window
     private readonly HistoryView _historyView;
     private readonly HistoryViewModel _historyViewModel;
 
+    // --- Configurable HMI shell (design §7 模块化可配置界面) ---------------------------------------------
+    // Present only when config/ui-layout.json exists; the legacy hand-written navigation stays untouched
+    // otherwise. The nav bar gets one button per configured page and the default configured page is shown.
+    private readonly ICommandService? _configCommandService;
+    private readonly ParameterService? _configParameterService;
+    private UiLayoutDefinition? _configLayout;
+    private readonly Dictionary<string, ConfigurablePageViewModel> _configPageVms = new();
+    private readonly Dictionary<string, ConfigurablePageView> _configPageViews = new();
+    private readonly List<string> _configHistory = new();
+
     /// <summary>The window-close jog-release task, awaited (bounded) in <see cref="OnWindowClosing"/> so the
     /// M106-M109 false write gets a chance to land before the host stops in <c>App.OnExit</c>.</summary>
     private Task? _exitJogRelease;
@@ -69,7 +85,9 @@ public partial class MainWindow : Window
         ConnectionSettingsViewModel connectionSettingsViewModel,
         ConnectionSettingsView connectionSettingsView,
         HistoryViewModel historyViewModel,
-        HistoryView historyView)
+        HistoryView historyView,
+        ICommandService? configCommandService = null,
+        ParameterService? configParameterService = null)
     {
         InitializeComponent();
 
@@ -89,6 +107,16 @@ public partial class MainWindow : Window
         _connectionSettingsView = connectionSettingsView ?? throw new ArgumentNullException(nameof(connectionSettingsView));
         _historyViewModel = historyViewModel ?? throw new ArgumentNullException(nameof(historyViewModel));
         _historyView = historyView ?? throw new ArgumentNullException(nameof(historyView));
+        _configCommandService = configCommandService;
+        _configParameterService = configParameterService;
+
+        // Configurable HMI shell (design §7): wire the configured pages when ui-layout.json is present.
+        // A missing/invalid layout falls back to the legacy navigation (invalid layouts throw on startup so
+        // a broken config is surfaced immediately rather than silently showing an empty screen).
+        if (_configCommandService is not null && _configParameterService is not null)
+        {
+            SetupConfigurablePages();
+        }
 
         // On window close (design §6.4 应用退出) best-effort release every jog coil so no manual coil is left
         // latched. The release is started here and awaited (bounded) so it can land before App.OnExit stops
@@ -227,4 +255,171 @@ public partial class MainWindow : Window
 
         PageHost.Content = _historyView;
     }
+
+    // --- Configurable HMI shell (design §7 模块化可配置界面) ------------------------------------------
+
+    /// <summary>Loads config/ui-layout.json (next to the binaries) and wires the configured pages: one nav-bar
+    /// button per page plus the default page shown in the page host.</summary>
+    private void SetupConfigurablePages()
+    {
+        var layoutPath = Path.Combine(AppContext.BaseDirectory, "config", "ui-layout.json");
+        var layout = UiLayoutLoader.TryLoadFromFile(layoutPath);
+        if (layout is null)
+        {
+            return; // legacy hand-written navigation stays in charge.
+        }
+
+        _configLayout = layout;
+
+        var separator = new Border
+        {
+            Width = 1,
+            Height = 20,
+            Background = (Brush)TryFindResource("InverseForegroundBrush") ?? System.Windows.Media.Brushes.Gray,
+            Margin = new Thickness(8, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        ConfigNavItems.Children.Add(separator);
+
+        foreach (var page in layout.Pages)
+        {
+            var button = new Button
+            {
+                Content = string.IsNullOrWhiteSpace(page.Title) ? page.Id : page.Title,
+                Style = (Style)TryFindResource("NavButtonStyle"),
+            };
+            var pageId = page.Id;
+            button.Click += (_, _) => Navigate(pageId);
+            ConfigNavItems.Children.Add(button);
+        }
+
+        Navigate(layout.DefaultPage.Id);
+    }
+
+    /// <inheritdoc />
+    public void Navigate(string pageId)
+    {
+        if (_configLayout is null)
+        {
+            return;
+        }
+
+        ReleaseManualJogsOnSwitch();
+        var page = _configLayout.FindPage(pageId);
+        if (page is null)
+        {
+            return;
+        }
+
+        if (_configHistory.Count == 0 || _configHistory[^1] != pageId)
+        {
+            _configHistory.Add(pageId);
+        }
+
+        if (!_configPageVms.TryGetValue(pageId, out var vm))
+        {
+            vm = new ConfigurablePageViewModel(_configLayout, page, this,
+                _configCommandService!, _configParameterService!);
+            _configPageVms[pageId] = vm;
+        }
+
+        if (!_configPageViews.TryGetValue(pageId, out var view))
+        {
+            view = new ConfigurablePageView();
+            _configPageViews[pageId] = view;
+        }
+
+        view.SetHostedContent(ResolveLegacyView(vm.HostedViewName));
+        view.Apply(vm);
+        PageHost.Content = view;
+    }
+
+    /// <inheritdoc />
+    public void NavigateUp()
+    {
+        if (_configLayout is null)
+        {
+            return;
+        }
+
+        var index = _configLayout.Pages.FindIndex(p => p.Id == CurrentConfigPageId());
+        if (index <= 0)
+        {
+            return;
+        }
+
+        Navigate(_configLayout.Pages[index - 1].Id);
+    }
+
+    /// <inheritdoc />
+    public void NavigateDown()
+    {
+        if (_configLayout is null)
+        {
+            return;
+        }
+
+        var index = _configLayout.Pages.FindIndex(p => p.Id == CurrentConfigPageId());
+        if (index < 0 || index >= _configLayout.Pages.Count - 1)
+        {
+            return;
+        }
+
+        Navigate(_configLayout.Pages[index + 1].Id);
+    }
+
+    /// <inheritdoc />
+    public void NavigateBack()
+    {
+        if (_configHistory.Count <= 1)
+        {
+            return;
+        }
+
+        _configHistory.RemoveAt(_configHistory.Count - 1);
+        Navigate(_configHistory[^1]);
+    }
+
+    /// <inheritdoc />
+    public void ShowLogin()
+    {
+        if (_configLayout is null)
+        {
+            return;
+        }
+
+        var loginPage = _configLayout.Pages.FirstOrDefault(p =>
+            p.Modules.Any(m => m.Type == UiModuleType.LoginForm));
+        if (loginPage is not null)
+        {
+            Navigate(loginPage.Id);
+        }
+    }
+
+    /// <inheritdoc />
+    public void SignOut()
+    {
+        foreach (var vm in _configPageVms.Values)
+        {
+            vm.SignOut();
+        }
+    }
+
+    private string? CurrentConfigPageId()
+        => _configHistory.Count > 0 ? _configHistory[^1] : null;
+
+    /// <summary>Resolves a pageHost module's legacy view name to the injected view instance (null = unknown).</summary>
+    private FrameworkElement? ResolveLegacyView(string? viewName)
+        => viewName switch
+        {
+            "OverviewView" => _overviewView,
+            "OperationBar" => _operationBar,
+            "ManualView" => _manualView,
+            "ParametersView" => _parametersView,
+            "IoDiagnosticsView" => _ioDiagnosticsView,
+            "DiagnosticTerminalView" => _diagnosticTerminalView,
+            "ConnectionSettingsView" => _connectionSettingsView,
+            "HistoryView" => _historyView,
+            _ => null,
+        };
 }
