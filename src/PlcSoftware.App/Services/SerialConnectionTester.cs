@@ -46,6 +46,11 @@ public sealed class SerialConnectionTester : IConnectionTester
     /// <summary>Default wall-clock bound for a single probe (10 s).</summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
 
+    /// <summary>Stable, culture-independent message the tester attaches to the <see cref="TimeoutException"/> it
+    /// surfaces when the wall-clock bound elapses. It is produced by the tester (not by the BCL
+    /// <c>Task.WaitAsync</c>), so callers and tests can rely on it regardless of the host culture.</summary>
+    public const string TimeoutMessage = "The connection test timed out.";
+
     private readonly TimeSpan _timeout;
     private readonly Func<SerialConnectionOptions, IDisposable> _openPort;
 
@@ -88,7 +93,22 @@ public sealed class SerialConnectionTester : IConnectionTester
             using var resource = _openPort(options);
         }, cancellationToken);
 
-        await probe.WaitAsync(_timeout, cancellationToken);
+        await ProbeWithTimeoutAsync(probe, _timeout, cancellationToken);
+    }
+
+    private static async Task ProbeWithTimeoutAsync(Task probe, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await probe.WaitAsync(timeout, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            // Task.WaitAsync throws the BCL's culture-localized "The operation has timed out."; rethrow a
+            // stable message produced by the tester so callers/tests get a deterministic, culture-independent
+            // result instead of the platform's localized string.
+            throw new TimeoutException(TimeoutMessage);
+        }
     }
 
     /// <summary>Wraps an <see cref="IStreamResource"/> as a plain <see cref="IDisposable"/> so the default

@@ -35,7 +35,7 @@ public class SerialConnectionTesterTests
         var ex = await Assert.ThrowsAsync<TimeoutException>(
             () => tester.TestAsync(Options, CancellationToken.None));
 
-        Assert.Contains("超时", ex.Message);
+        Assert.Equal(SerialConnectionTester.TimeoutMessage, ex.Message);
     }
 
     [Fact]
