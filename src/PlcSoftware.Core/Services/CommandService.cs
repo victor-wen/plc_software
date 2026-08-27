@@ -14,11 +14,16 @@ using PlcSoftware.Core.Models;
 ///
 /// <para>Gating. <see cref="ExecuteAsync"/> rejects a command with <see cref="CommandStatus.Rejected"/>
 /// before any write when the link is offline (<see cref="ICommandGate.IsOnline"/> false) or — for a jog —
-/// when the machine is not manual-idle (<see cref="ICommandGate.IsManualIdle"/> false).</para>
+/// when the machine is not manual-idle (<see cref="ICommandGate.IsManualIdle"/> false).
+/// <see cref="ReleaseJogCommandsAsync"/> likewise performs <em>no</em> writes while offline (§5.3), but
+/// runs best-effort over an Online link using a non-canceled token so an already-canceled app-exit token
+/// cannot prevent the release (§6.4: 应用退出时均尝试复位命令).</para>
 ///
 /// <para>Result-unknown (design §5.3). A write that fails (e.g. a response timeout) yields
 /// <see cref="CommandStatus.Unknown"/> and the pulse is <em>not</em> repeated and the release write is
-/// <em>not</em> scheduled — the PLC-side state cannot be trusted, so no blind retry.</para>
+/// <em>not</em> scheduled — the PLC-side state cannot be trusted, so no blind retry. A cancellation
+/// mid-pulse is the one exception: the coil is best-effort cleared (to avoid latching true) before the
+/// <see cref="OperationCanceledException"/> is rethrown.</para>
 ///
 /// <para>Mode exclusivity (M104/M105). The service writes only the requested bit; the mutually exclusive
 /// mode combos (§4.4: 手动 M104=0,M105=0 / 自动 M104=1,M105=0 / 直通 M104=0,M105=1) are composed by the UI,
@@ -59,7 +64,12 @@ public sealed class CommandService : ICommandService
             throw new ArgumentNullException(nameof(request));
         }
 
-        var spec = Specs[request.Target];
+        // A target that isn't in the point map (e.g. an invalid enum cast) is a pre-write validation
+        // failure: reject rather than throw a KeyNotFoundException to the caller.
+        if (!Specs.TryGetValue(request.Target, out var spec))
+        {
+            return new CommandResult(CommandStatus.Rejected, request.Target, "unknown command target");
+        }
 
         // Gate: offline denies every write; only a manual-idle machine accepts the manual jogs.
         if (!_gate.IsOnline)
@@ -95,7 +105,22 @@ public sealed class CommandService : ICommandService
         }
         catch (OperationCanceledException)
         {
-            // Shutdown cancels the command; surface it so the caller can join cleanly.
+            // Shutdown may cancel a pulse mid-window, after the set-true edge has landed; the coil could
+            // be latched true. Best-effort clear it before surfacing the cancellation so a canceled reset
+            // is not left on (design §6.4 release semantics). Best-effort: any failure to clear here is
+            // swallowed — the PLC watchdog / UI reconcile handles it.
+            if (spec.Kind == CommandKind.Pulse)
+            {
+                try
+                {
+                    await WriteCoilAsync(spec.Address, value: false, CancellationToken.None);
+                }
+                catch
+                {
+                    // The clear could not be delivered; the coil is left for the watchdog / UI to resolve.
+                }
+            }
+
             throw;
         }
         catch (Exception ex)
@@ -109,17 +134,23 @@ public sealed class CommandService : ICommandService
     /// <inheritdoc />
     public async Task ReleaseJogCommandsAsync(CancellationToken cancellationToken)
     {
-        // Best-effort release of M106-M109 (design §6.4). A per-coil transport error is swallowed: the
-        // PLC watchdog (D106 heartbeat, §5.2) is the offline fallback that clears the manual outputs.
+        // §5.3 disables ALL write operations while offline (断线), so a dropped link skips the release.
+        // Trade-off: skipping the writes while offline means a jog that was latched online can only be
+        // cleared by the D106 watchdog once the link recovers — but writing offline is forbidden by design.
+        if (!_gate.IsOnline)
+        {
+            return;
+        }
+
+        // Best-effort release of M106-M109 (design §6.4). App-exit / page-switch tokens arrive already
+        // canceled, so the writes MUST NOT observe the caller's token — otherwise no coil would be
+        // released (review finding 2). Use CancellationToken.None and swallow each per-coil transport
+        // error, continuing to the remaining coils.
         foreach (var spec in JogSpecs)
         {
             try
             {
-                await WriteCoilAsync(spec.Address, value: false, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
+                await WriteCoilAsync(spec.Address, value: false, CancellationToken.None);
             }
             catch
             {

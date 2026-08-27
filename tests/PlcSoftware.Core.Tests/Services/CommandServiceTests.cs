@@ -15,11 +15,13 @@ namespace PlcSoftware.Core.Tests.Services;
 ///   - a pulse command writes the coil true, waits ~200 ms, then writes it false (order and timing
 ///     asserted through a shared event log and the fake delay's recorded spans);
 ///   - <see cref="ICommandService.ReleaseJogCommandsAsync"/> writes M106-M109 all false ("切页/窗口失焦
-///     复位"), and does so best-effort (one write per coil, independent of the gate);
+///     复位"), and does so best-effort (one write per coil, using a non-canceled token so an app-exit
+///     token cannot prevent the release §6.4, and skipped entirely while offline §5.3);
 ///   - a jog is rejected with <see cref="CommandStatus.Rejected"/> when the link is offline or the
 ///     machine is not manual-idle (design §5.2/§6.4: 断线 and 非手动运行状态 both deny manual output);
 ///   - a write that times out mid-pulse returns <see cref="CommandStatus.Unknown"/> and does <em>not</em>
-///     repeat the pulse or schedule the release write (design §5.3: 结果未知，不盲目重复启动或复位).
+///     repeat the pulse or schedule the release write, and a cancellation mid-pulse best-effort clears
+///     the coil before the <see cref="OperationCanceledException"/> is rethrown (design §5.3/§6.4).
 /// </summary>
 public class CommandServiceTests
 {
@@ -115,6 +117,89 @@ public class CommandServiceTests
         Assert.Equal(new[] { (104, true) }, client.Writes);
     }
 
+    [Fact]
+    public async Task Pulse_CancelDuringDelay_BestEffortClearsCoil()
+    {
+        var log = new List<string>();
+        var client = new RecordingClient(log);
+        var cts = new CancellationTokenSource();
+        var delay = new CancellingDelay(cts);
+        var service = new CommandService(client, new FakeGate(), delay);
+
+        // Cancellation lands during the ~200 ms window (after the set-true edge). The OCE must still
+        // surface, but the coil must NOT be left latched true: one best-effort false write occurs.
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => service.ExecuteAsync(new CommandRequest(CommandTarget.EStopRequest), cts.Token));
+
+        Assert.Equal(new[] { (100, true), (100, false) }, client.Writes);
+        Assert.Equal(new[] { 200.0 }, delay.Delays.Select(d => d.TotalMilliseconds));
+    }
+
+    [Fact]
+    public async Task ReleaseJogCommands_CanceledToken_StillReleasesAllCoils()
+    {
+        var log = new List<string>();
+        var client = new RecordingClient(log);
+        var service = new CommandService(client, new FakeGate(), new FakeDelay(log));
+        var cts = new CancellationTokenSource();
+        cts.Cancel(); // app-exit / shutdown tokens arrive already canceled (design §6.4).
+
+        await service.ReleaseJogCommandsAsync(cts.Token);
+
+        // The release must run best-effort regardless of the (already-canceled) token so no manual
+        // coil is left latched on exit.
+        Assert.Equal(
+            new[] { (106, false), (107, false), (108, false), (109, false) },
+            client.Writes);
+    }
+
+    [Fact]
+    public async Task ReleaseJogCommands_Offline_NoWrites()
+    {
+        var log = new List<string>();
+        var client = new RecordingClient(log);
+        var gate = new FakeGate { IsOnline = false }; // 断线.
+        var service = new CommandService(client, gate, new FakeDelay(log));
+
+        await service.ReleaseJogCommandsAsync(CancellationToken.None);
+
+        // §5.3 forbids ALL write operations while offline, so the release is skipped entirely.
+        Assert.Empty(client.Writes);
+    }
+
+    [Fact]
+    public async Task Pulse_ClearWriteTimeout_NoRepeatOrRelease()
+    {
+        var log = new List<string>();
+        // The clear (set-false) write of the reset pulse times out.
+        var client = new RecordingClient(log, failOnWriteNumber: 2);
+        var delay = new FakeDelay(log);
+        var service = new CommandService(client, new FakeGate(), delay);
+
+        var result = await service.ExecuteAsync(new CommandRequest(CommandTarget.Reset), CancellationToken.None);
+
+        Assert.Equal(CommandStatus.Unknown, result.Status);
+        // Exactly two writes (set-true edge + the attempted clear), the ~200 ms delay, and then
+        // NO retry / NO release write — design §5.3 "结果未知，不盲目重复启动或复位".
+        Assert.Equal(new[] { (103, true), (103, false) }, client.Writes);
+        Assert.Equal(new[] { 200.0 }, delay.Delays.Select(d => d.TotalMilliseconds));
+    }
+
+    [Fact]
+    public async Task InvalidTarget_Rejected_NotKeyNotFound()
+    {
+        var log = new List<string>();
+        var client = new RecordingClient(log);
+        var service = new CommandService(client, new FakeGate(), new FakeDelay(log));
+
+        var invalid = (CommandTarget)999;
+        var result = await service.ExecuteAsync(new CommandRequest(invalid), CancellationToken.None);
+
+        Assert.Equal(CommandStatus.Rejected, result.Status);
+        Assert.NotNull(result.Message);
+        Assert.Empty(client.Writes);
+    }
+
     /// <summary>Records every coil write (address + value) and, optionally, times out the Nth write.</summary>
     private sealed class RecordingClient : IModbusClient
     {
@@ -133,6 +218,9 @@ public class CommandServiceTests
 
         public Task WriteSingleCoilAsync(byte slaveId, ushort address, bool value, CancellationToken cancellationToken)
         {
+            // Realistic cancellation: a canceled operation never reaches the wire (and never records a write).
+            cancellationToken.ThrowIfCancellationRequested();
+
             var ordinal = ++_writeCount;
             _writes.Add((address, value));
             _log.Add($"W:{address}:{(value ? "True" : "False")}");
@@ -185,6 +273,31 @@ public class CommandServiceTests
             _delays.Add(delay);
             _log.Add($"D:{delay.TotalMilliseconds}");
             return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// A delay that cancels a shared <see cref="CancellationTokenSource"/> and throws the resulting
+    /// <see cref="OperationCanceledException"/> on its first <see cref="Delay"/> call, simulating
+    /// shutdown landing mid-pulse (write-true edge done, cancel during the ~200 ms window).
+    /// </summary>
+    private sealed class CancellingDelay : IAsyncDelay
+    {
+        private readonly CancellationTokenSource _cts;
+        private readonly List<TimeSpan> _delays = new();
+
+        public CancellingDelay(CancellationTokenSource cts)
+        {
+            _cts = cts;
+        }
+
+        public IReadOnlyList<TimeSpan> Delays => _delays.ToArray();
+
+        public Task Delay(TimeSpan delay, CancellationToken cancellationToken)
+        {
+            _delays.Add(delay);
+            _cts.Cancel();
+            throw new OperationCanceledException(_cts.Token);
         }
     }
 

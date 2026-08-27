@@ -19,8 +19,10 @@ public interface ICommandService
 
     /// <summary>
     /// Releases every jog coil (M106-M109) to <c>false</c>. Called on mouse-up, page switch, window blur
-    /// or app exit (design §6.4). Best-effort: each write is attempted independently and a per-coil
-    /// transport error is swallowed, relying on the PLC watchdog for the offline fallback (design §5.2).
+    /// or app exit (design §6.4). Best-effort: the four writes do <em>not</em> observe the caller's
+    /// (app-exit, already-canceled) token and each per-coil transport error is swallowed, so no manual
+    /// coil is left latched. Skipped entirely when the link is offline (design §5.3 forbids all writes);
+    /// the D106 watchdog (§5.2) is then the offline fallback.
     /// </summary>
     Task ReleaseJogCommandsAsync(CancellationToken cancellationToken);
 }
