@@ -110,8 +110,8 @@ public class DashboardViewModelTests
         var (vm, store, _, _) = Build();
         vm.EditCommand.Execute(null);
         Assert.True(vm.IsEditing);
-        vm.MoveUp(vm.Tiles[1]);
-        vm.Tiles[1].Owner.Resize(vm.Tiles[1], 4, 1);
+        vm.MoveUp(vm.Tiles[1]);           // run moves to the front.
+        vm.Tiles[0].Owner.Resize(vm.Tiles[0], 4, 1); // run becomes 4 cols.
 
         vm.SaveTilesCommand.Execute(null);
 
@@ -121,6 +121,7 @@ public class DashboardViewModelTests
         Assert.Equal(4, saved.Value.Count);
         Assert.Equal("run", saved.Value[0].Id);
         Assert.Equal(4, saved.Value[0].Cols);
+        Assert.Equal(1, saved.Value[0].Rows);
         Assert.Contains("已保存", vm.StatusText);
     }
 
