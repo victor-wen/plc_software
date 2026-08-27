@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 
 # SDD / superpowers tooling
 .superpowers/
+
+# Serena MCP local workspace
+.serena/
