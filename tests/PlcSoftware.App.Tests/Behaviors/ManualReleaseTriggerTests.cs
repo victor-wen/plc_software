@@ -10,6 +10,7 @@ using PlcSoftware.App.ViewModels;
 using PlcSoftware.App.Views;
 using PlcSoftware.Core.Abstractions;
 using PlcSoftware.Core.Models;
+using PlcSoftware.Core.Services;
 
 namespace PlcSoftware.App.Tests.Behaviors;
 
@@ -226,7 +227,13 @@ public class ManualReleaseTriggerTests
         var operationVm = new OperationViewModel(service, gate);
         var operationBar = new OperationBar();
         var manualView = new ManualView();
-        return new MainWindow(overviewVm, overviewView, operationVm, operationBar, manualVm, manualView);
+        var parametersVm = new ParametersViewModel(
+            new ParameterService(new TrivialModbusClient(), gate, Array.Empty<ParameterDefinition>()),
+            gate,
+            Array.Empty<ParameterDefinition>());
+        var parametersView = new ParametersView();
+        return new MainWindow(overviewVm, overviewView, operationVm, operationBar, manualVm, manualView,
+            parametersVm, parametersView);
     }
 
     private static Button CreateJogButton(ManualViewModel vm)
@@ -278,5 +285,34 @@ public class ManualReleaseTriggerTests
             ReleaseJogCommandCalls++;
             return Task.CompletedTask;
         }
+    }
+
+    /// <summary>No-op <see cref="IModbusClient"/> so the <see cref="MainWindow"/> can be constructed over a
+    /// parameter view model in these WPF-trigger tests (the parameter page itself is never exercised here).</summary>
+    private sealed class TrivialModbusClient : IModbusClient
+    {
+        public Task ConnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task DisconnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<bool[]> ReadCoilsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+            => Task.FromResult(new bool[count]);
+
+        public Task<bool[]> ReadDiscreteInputsAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+            => Task.FromResult(new bool[count]);
+
+        public Task<ushort[]> ReadHoldingRegistersAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+            => Task.FromResult(new ushort[count]);
+
+        public Task<ushort[]> ReadInputRegistersAsync(byte slaveId, ushort address, ushort count, CancellationToken cancellationToken)
+            => Task.FromResult(new ushort[count]);
+
+        public Task WriteSingleCoilAsync(byte slaveId, ushort address, bool value, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public Task WriteSingleRegisterAsync(byte slaveId, ushort address, ushort value, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

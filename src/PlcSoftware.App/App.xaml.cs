@@ -72,6 +72,13 @@ public partial class App : Application
         supervisor.StateChanged += state => RunOnUi(() => manual.ApplyConnectionState(state));
         store.SnapshotChanged += (_, snapshot) => RunOnUi(() => manual.ApplySnapshot(snapshot));
 
+        // Parameter page (design §6.5): writes through the injected ParameterService (FC06 write + FC03
+        // read-back verify) gated by the injected ICommandGate. It consumes the snapshot for the current
+        // (old) value of the editable D201/D202/D204/D205 and the read-only D203/D210/D212.D213 displays.
+        var parameters = _host.Services.GetRequiredService<ParametersViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => parameters.ApplyConnectionState(state));
+        store.SnapshotChanged += (_, snapshot) => RunOnUi(() => parameters.ApplySnapshot(snapshot));
+
         // Seed once after subscribing so an event raised before the subscription (or before the host start
         // finished) is not lost — the first StateChanged/SnapshotChanged/StatusChanged can fire while the
         // hosted loops are still starting, before the wiring above is in place. Latest state wins over any
@@ -86,6 +93,8 @@ public partial class App : Application
         operation.ApplySnapshot(store.Current);
         manual.ApplyConnectionState(supervisor.CurrentState);
         manual.ApplySnapshot(store.Current);
+        parameters.ApplyConnectionState(supervisor.CurrentState);
+        parameters.ApplySnapshot(store.Current);
 
         var window = _host.Services.GetRequiredService<MainWindow>();
         window.DataContext = viewModel;
@@ -186,6 +195,11 @@ public partial class App : Application
         services.AddSingleton<OperationBar>();
         services.AddSingleton<ManualViewModel>();
         services.AddSingleton<ManualView>();
+        services.AddSingleton(sp => new ParametersViewModel(
+            sp.GetRequiredService<ParameterService>(),
+            sp.GetRequiredService<ICommandGate>(),
+            BuildWritableParameters()));
+        services.AddSingleton<ParametersView>();
         services.AddSingleton<MainWindow>();
     }
 

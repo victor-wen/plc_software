@@ -10,9 +10,10 @@ namespace PlcSoftware.App.Views;
 /// later tasks navigate their page views) and the global status bar bound to <c>MainViewModel</c>.
 /// A small dispatcher timer drives the status-bar clock (design §6.1 当前时间).
 ///
-/// <para>The 总览 nav entry shows the overview page in <see cref="PageHost"/> and the 操作 entry shows the
-/// operation zone (design §6.3); each page's data context is its injected view model. The other nav
-/// buttons are still visual placeholders (their pages belong to later tasks).</para>
+/// <para>The 总览 nav entry shows the overview page in <see cref="PageHost"/>, the 操作 entry shows the
+/// operation zone (design §6.3), the 手动 entry shows the manual page (design §6.4) and the 参数 entry shows
+/// the parameter page (design §6.5); each page's data context is its injected view model. The remaining nav
+/// buttons (I/O 诊断 / 报警与历史) are still visual placeholders — their pages belong to later tasks.</para>
 ///
 /// <para><b>App-exit jog release is best-effort (design §6.4 应用退出).</b> On <see cref="Window.Closing"/> the
 /// manual jogs are released through a bounded await (<see cref="OnWindowClosing"/>) so the M106-M109 false
@@ -35,6 +36,8 @@ public partial class MainWindow : Window
     private readonly OperationViewModel _operationViewModel;
     private readonly ManualView _manualView;
     private readonly ManualViewModel _manualViewModel;
+    private readonly ParametersView _parametersView;
+    private readonly ParametersViewModel _parametersViewModel;
 
     /// <summary>The window-close jog-release task, awaited (bounded) in <see cref="OnWindowClosing"/> so the
     /// M106-M109 false write gets a chance to land before the host stops in <c>App.OnExit</c>.</summary>
@@ -46,7 +49,9 @@ public partial class MainWindow : Window
         OperationViewModel operationViewModel,
         OperationBar operationBar,
         ManualViewModel manualViewModel,
-        ManualView manualView)
+        ManualView manualView,
+        ParametersViewModel parametersViewModel,
+        ParametersView parametersView)
     {
         InitializeComponent();
 
@@ -56,6 +61,8 @@ public partial class MainWindow : Window
         _operationBar = operationBar ?? throw new ArgumentNullException(nameof(operationBar));
         _manualViewModel = manualViewModel ?? throw new ArgumentNullException(nameof(manualViewModel));
         _manualView = manualView ?? throw new ArgumentNullException(nameof(manualView));
+        _parametersViewModel = parametersViewModel ?? throw new ArgumentNullException(nameof(parametersViewModel));
+        _parametersView = parametersView ?? throw new ArgumentNullException(nameof(parametersView));
 
         // On window close (design §6.4 应用退出) best-effort release every jog coil so no manual coil is left
         // latched. The release is started here and awaited (bounded) so it can land before App.OnExit stops
@@ -123,6 +130,19 @@ public partial class MainWindow : Window
         }
 
         PageHost.Content = _manualView;
+    }
+
+    /// <summary>Navigates to the parameter page (design §6.5) by hosting the injected parameter view in the
+    /// page region and binding it to the parameter view model.</summary>
+    private void OnParametersClicked(object sender, RoutedEventArgs e)
+    {
+        ReleaseManualJogsOnSwitch();
+        if (_parametersView.DataContext is null)
+        {
+            _parametersView.DataContext = _parametersViewModel;
+        }
+
+        PageHost.Content = _parametersView;
     }
 
     /// <summary>Releases every manual jog coil when navigating away from the manual page so a press-and-hold
