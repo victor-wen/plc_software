@@ -6,7 +6,8 @@ namespace PlcSoftware.Infrastructure.Persistence;
 /// <summary>
 /// Persists the K1-K7 alarm lifecycle (design §4.4). One <see cref="FaultDefinition"/> that stays
 /// active is recorded once: inserting an alarm whose code already has an open (not yet closed) row is a
-/// no-op, so a persistent alarm is never duplicated. Recovery closes the most recent open row.
+/// no-op, so a persistent alarm is never duplicated. Recovery closes the most recent open row (one
+/// active alarm at a time, matching <see cref="PlcSoftware.Core.Services.AlarmService"/>).
 /// </summary>
 public sealed class AlarmRepository
 {
@@ -19,7 +20,10 @@ public sealed class AlarmRepository
 
     /// <summary>
     /// Records a newly-started alarm. If the same <paramref name="definition"/> code already has an open
-    /// (closed_at IS NULL) row, nothing is inserted — a still-active alarm must not be duplicated.
+    /// (closed_at IS NULL) row, nothing is inserted — a still-active alarm must not be duplicated. The
+    /// dedup is atomic: a partial unique index (<c>ux_alarms_open</c>) enforces at most one open row per
+    /// code, and the insert uses an <c>INSERT ... WHERE NOT EXISTS</c> guard. A duplicate raises
+    /// <see cref="InvalidOperationException"/> so concurrent same-code inserts yield exactly one row.
     /// </summary>
     public void InsertStarted(FaultDefinition definition, DateTime openedAt)
     {
@@ -27,29 +31,35 @@ public sealed class AlarmRepository
 
         _db.InTransaction(connection =>
         {
-            var exists = DoesOpenRowExist(connection, definition.Code);
-            if (exists)
+            try
             {
-                return;
+                using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO alarms (code, message, opened_at, closed_at)
+                    SELECT @code, @message, @openedAt, NULL
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM alarms
+                        WHERE code = @code AND closed_at IS NULL
+                    )
+                    """;
+                command.Parameters.AddWithValue("@code", definition.Code);
+                command.Parameters.AddWithValue("@message", definition.Message);
+                command.Parameters.AddWithValue("@openedAt", openedAt.ToString("o"));
+                command.ExecuteNonQuery();
             }
-
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                INSERT INTO alarms (code, message, opened_at, closed_at)
-                VALUES (@code, @message, @openedAt, NULL)
-                """;
-            command.Parameters.AddWithValue("@code", definition.Code);
-            command.Parameters.AddWithValue("@message", definition.Message);
-            command.Parameters.AddWithValue("@openedAt", openedAt.ToString("o"));
-            command.ExecuteNonQuery();
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
+            {
+                throw new InvalidOperationException(
+                    $"duplicate open alarm for code {definition.Code}", ex);
+            }
         });
     }
 
     /// <summary>
-    /// Closes the most recently opened alarm row (sets <c>closed_at</c>), marking recovery. Rows with no
-    /// open state are left untouched.
+    /// Closes the most recently opened alarm row (sets <c>closed_at</c>), marking recovery of the single
+    /// active alarm. Rows with no open state are left untouched.
     /// </summary>
-    public void CloseOpen(DateTime closedAt)
+    public void CloseMostRecentOpen(DateTime closedAt)
     {
         _db.InTransaction(connection =>
         {
@@ -77,17 +87,4 @@ public sealed class AlarmRepository
     /// <summary>Returns all open (not yet recovered) alarm rows for inspection.</summary>
     public List<Dictionary<string, object?>> QueryOpen()
         => _db.Query("SELECT id, code, message, opened_at, closed_at FROM alarms WHERE closed_at IS NULL");
-
-    private static bool DoesOpenRowExist(SqliteConnection connection, int code)
-    {
-        using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT EXISTS(
-                SELECT 1 FROM alarms
-                WHERE code = @code AND closed_at IS NULL
-            )
-            """;
-        command.Parameters.AddWithValue("@code", code);
-        return Convert.ToInt64(command.ExecuteScalar()) != 0;
-    }
 }

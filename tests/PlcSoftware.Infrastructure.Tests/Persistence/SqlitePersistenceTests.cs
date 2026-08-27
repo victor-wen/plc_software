@@ -17,7 +17,9 @@ namespace PlcSoftware.Infrastructure.Tests.Persistence;
 ///     stored verbatim and cannot break out of the SQL;
 ///   - the database accepts a burst of concurrent single-writer inserts without corruption;
 ///   - a persistently-active alarm is not duplicated (InsertStarted twice yields a single open row);
-///   - recovery closes the open alarm row (CloseOpen sets closed_at and clears open rows).
+///   - 50 concurrent same-code inserts yield exactly one open row (the rest are rejected atomically);
+///   - recovery closes the most recent open alarm row (CloseMostRecentOpen sets closed_at and clears
+///     open rows).
 /// </summary>
 public class SqlitePersistenceTests : IDisposable
 {
@@ -123,7 +125,8 @@ public class SqlitePersistenceTests : IDisposable
     {
         var repo = new AuditRepository(_db);
 
-        Parallel.For(0, 50, i =>
+        var options = new ParallelOptions { MaxDegreeOfParallelism = 50 };
+        Parallel.For(0, 50, options, i =>
             repo.Record(
                 new AuditEvent(AuditCategory.Mask, $"M110-{i}", i, $"msg {i}"),
                 new DateTime(2026, 8, 27, 10, 30, 0)));
@@ -148,13 +151,13 @@ public class SqlitePersistenceTests : IDisposable
     }
 
     [Fact]
-    public void AlarmRepository_CloseOpen_SetsClosedAtAndClearsOpenRows()
+    public void AlarmRepository_CloseMostRecentOpen_SetsClosedAtAndClearsOpenRows()
     {
         var repo = new AlarmRepository(_db);
         var definition = new FaultDefinition { Code = 1, Message = "K1 急停" };
 
         repo.InsertStarted(definition, new DateTime(2026, 8, 27, 9, 0, 0));
-        repo.CloseOpen(new DateTime(2026, 8, 27, 9, 6, 30));
+        repo.CloseMostRecentOpen(new DateTime(2026, 8, 27, 9, 6, 30));
 
         Assert.Empty(repo.QueryOpen());
 
@@ -163,5 +166,28 @@ public class SqlitePersistenceTests : IDisposable
         Assert.Single(closed);
         Assert.Equal(1, Convert.ToInt32(closed[0]["code"]!));
         Assert.NotNull(closed[0]["closed_at"]);
+    }
+
+    [Fact]
+    public void AlarmRepository_FiftyConcurrentSameCodeInserts_ExactlyOneOpenRow()
+    {
+        var repo = new AlarmRepository(_db);
+        var definition = new FaultDefinition { Code = 1, Message = "K1 急停" };
+
+        var options = new ParallelOptions { MaxDegreeOfParallelism = 50 };
+        Parallel.For(0, 50, options, i =>
+            repo.InsertStarted(definition, new DateTime(2026, 8, 27, 9, 0, 0).AddSeconds(i)));
+
+        // Exactly one open row survives: every concurrent duplicate is rejected atomically (either
+        // silently — the INSERT ... WHERE NOT EXISTS guard sees the committed row — or, in a genuine
+        // race, via the unique-index conflict surfaced as InvalidOperationException).
+        var open = repo.QueryOpen();
+        Assert.Single(open);
+        Assert.Equal(1, Convert.ToInt32(open[0]["code"]!));
+        Assert.Null(open[0]["closed_at"]);
+
+        // No partial duplicates: the table holds exactly the one open row and nothing else.
+        var all = _db.Query("SELECT COUNT(*) AS c FROM alarms");
+        Assert.Equal(1L, Convert.ToInt64(all[0]["c"]));
     }
 }

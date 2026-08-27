@@ -113,6 +113,13 @@ public sealed class SqliteDatabase : IDisposable
     {
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
+
+        // An explicit busy timeout so concurrent writers wait (up to 5 s) instead of immediately
+        // failing with SQLITE_BUSY when the SQLite write lock is held by another connection.
+        using var busy = connection.CreateCommand();
+        busy.CommandText = "PRAGMA busy_timeout=5000;";
+        busy.ExecuteNonQuery();
+
         return connection;
     }
 
@@ -127,6 +134,10 @@ public sealed class SqliteDatabase : IDisposable
 
         CREATE INDEX IF NOT EXISTS ix_alarms_code_opened
             ON alarms (code, opened_at);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_alarms_open
+            ON alarms (code)
+            WHERE closed_at IS NULL;
 
         CREATE TABLE IF NOT EXISTS audit_events (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
