@@ -41,7 +41,16 @@ public class SingleInstanceGuardTests
         using var second = new SingleInstanceGuard(name);
 
         Assert.True(first.TryAcquire());
-        Assert.False(second.TryAcquire());
+
+        // A named Mutex is re-entrant on the SAME thread, so simulating a second instance requires a
+        // different thread (a different process in production). Acquire the second guard from a worker
+        // thread that blocks while the first instance holds the mutex; the result must be false.
+        var secondResult = false;
+        var thread = new Thread(() => secondResult = second.TryAcquire());
+        thread.Start();
+        thread.Join();
+
+        Assert.False(secondResult);
         Assert.False(second.IsAcquired);
     }
 
@@ -55,7 +64,10 @@ public class SingleInstanceGuardTests
         Assert.True(first.TryAcquire());
         first.Release();
 
-        Assert.True(second.TryAcquire());
+        var thread = new Thread(() => Assert.True(second.TryAcquire()));
+        thread.Start();
+        thread.Join();
+
         Assert.True(second.IsAcquired);
     }
 
