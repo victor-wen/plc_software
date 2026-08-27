@@ -107,12 +107,14 @@ public class DeviceStateStoreTests
 
         using var cts = new CancellationTokenSource();
         var observed = new System.Collections.Concurrent.ConcurrentQueue<DeviceSnapshot>();
+        var firstShow = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var reader = Task.Run(() =>
         {
             while (!cts.IsCancellationRequested)
             {
                 observed.Enqueue(store.Current);
+                firstShow.TrySetResult();
                 Thread.Yield();
             }
         });
@@ -125,6 +127,10 @@ public class DeviceStateStoreTests
             valid[snapshot] = 0;
             store.Publish(snapshot);
         }
+
+        // Wait until the reader thread has observed at least one snapshot, so the emptiness assertion
+        // below cannot flake on a schedule where the reader never ran before cancellation.
+        await firstShow.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         cts.Cancel();
         await reader;
