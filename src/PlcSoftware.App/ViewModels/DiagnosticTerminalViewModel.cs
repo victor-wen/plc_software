@@ -30,24 +30,24 @@ public sealed class TerminalReadChoice
 /// registers, FC04 input registers. Writes (FC05 coil / FC06 register) are separate commands, not
 /// part of the read selector.
 /// </summary>
-    public enum TerminalReadFunction
-    {
-        Coils,
-        Discrete,
-        Holding,
-        Input,
-    }
+public enum TerminalReadFunction
+{
+    Coils,
+    Discrete,
+    Holding,
+    Input,
+}
 
-    /// <summary>
-    /// The write operation staged for the operator's confirmation: a FC06 register write or a FC05 coil
-    /// write. The pending kind is kept so <see cref="DiagnosticTerminalViewModel.ConfirmWriteCommand"/>
-    /// knows which <see cref="DiagnosticTerminalService"/> method to run.
-    /// </summary>
-    public enum TerminalWriteKind
-    {
-        Register,
-        Coil,
-    }
+/// <summary>
+/// The write operation staged for the operator's confirmation: a FC06 register write or a FC05 coil
+/// write. The pending kind is kept so <see cref="DiagnosticTerminalViewModel.ConfirmWriteCommand"/>
+/// knows which <see cref="DiagnosticTerminalService"/> method to run.
+/// </summary>
+public enum TerminalWriteKind
+{
+    Register,
+    Coil,
+}
 
 /// <summary>
 /// The structured Modbus debug terminal page (design §6.5): FC01/02/03/04 reads and FC05/06 single-point
