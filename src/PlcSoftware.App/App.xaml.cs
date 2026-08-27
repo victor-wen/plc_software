@@ -229,6 +229,7 @@ public partial class App : Application
         services.AddSingleton<IConnectionTester, SerialConnectionTester>();
         services.AddSingleton(sp => new ConnectionSettingsViewModel(
             sp.GetRequiredService<IConnectionTester>(),
+            sp.GetRequiredService<ISupervisedConnection>(),
             serialOptions));
         services.AddSingleton<ConnectionSettingsView>();
 

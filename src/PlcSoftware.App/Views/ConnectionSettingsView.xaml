@@ -114,6 +114,10 @@
                            Margin="40,6,0,0"
                            Foreground="{StaticResource StatusWarnBrush}"
                            Visibility="{Binding IsOnline, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <Button Content="断开连接"
+                        Style="{StaticResource ActionButtonStyle}"
+                        Command="{Binding DisconnectCommand}"
+                        Margin="0,2,0,0" />
             </StackPanel>
 
             <!-- Editable serial options (design §6.8), disabled while Online. -->
@@ -136,12 +140,24 @@
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="校验" Style="{StaticResource FieldLabelStyle}" Width="80" />
-                        <ComboBox ItemsSource="{Binding ParityOptions}" SelectedItem="{Binding SelectedParity}" Style="{StaticResource FieldComboStyle}" />
+                        <ComboBox ItemsSource="{Binding ParityOptions}" SelectedItem="{Binding SelectedParity}" Style="{StaticResource FieldComboStyle}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource ParityChineseConverter}}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="停止位" Style="{StaticResource FieldLabelStyle}" Width="80" />
-                        <ComboBox ItemsSource="{Binding StopBitsOptions}" SelectedItem="{Binding SelectedStopBits}" Style="{StaticResource FieldComboStyle}" />
+                        <ComboBox ItemsSource="{Binding StopBitsOptions}" SelectedItem="{Binding SelectedStopBits}" Style="{StaticResource FieldComboStyle}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource StopBitsChineseConverter}}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">

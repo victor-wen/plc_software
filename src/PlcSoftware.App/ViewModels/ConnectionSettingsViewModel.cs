@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PlcSoftware.App.Services;
+using PlcSoftware.Core.Abstractions;
 using PlcSoftware.Core.Configuration;
 using PlcSoftware.Core.Models;
 
@@ -29,6 +30,13 @@ namespace PlcSoftware.App.ViewModels;
 /// cancelled (the command's own <c>IAsyncRelayCommand.Cancel()</c> flows into the tester's token) and reports
 /// 连接测试已取消 without surfacing a bogus failure.</para>
 ///
+/// <para><b>Offline-phase edits never propagate to a running transport.</b> Editing these fields only mutates the
+/// displayed options and the validation state; it never reconfigures the live transport. A transport that is
+/// already <see cref="ConnectionState.Online"/> stays on its original connection settings, and the edited values
+/// take effect only after the operator disconnects, reconnects and re-runs the connection test. There is no
+/// hot-reconfiguration path, so the page cannot silently change the parameters of a session that is producing
+/// data (design §6.8: 修改配置前先断开当前连接 — the online form is locked precisely so this is enforced).</para>
+///
 /// <para><b>No UI-thread dependency.</b> The view model consumes <see cref="ConnectionState"/> through
 /// <see cref="ApplyConnectionState"/> and runs the test through the injected <see cref="IConnectionTester"/>. It
 /// never touches a <c>Dispatcher</c> or any WPF type, so it stays testable under a pure unit test host (the App
@@ -38,6 +46,7 @@ namespace PlcSoftware.App.ViewModels;
 public sealed partial class ConnectionSettingsViewModel : ObservableObject
 {
     private readonly IConnectionTester _tester;
+    private readonly ISupervisedConnection? _supervisor;
 
     /// <summary>The supervised link state, used to block config editing while online (design §6.8).</summary>
     [ObservableProperty]
@@ -79,12 +88,14 @@ public sealed partial class ConnectionSettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _isTesting;
 
-    /// <summary>Builds the settings page over the injected connection tester and the initial options
-    /// (defaults loaded from <c>appsettings.json</c> at the composition root).</summary>
-    public ConnectionSettingsViewModel(IConnectionTester tester, SerialConnectionOptions? initial = null)
+    /// <summary>Builds the settings page over the injected connection tester, the supervised connection and the
+    /// initial options (defaults loaded from <c>appsettings.json</c> at the composition root). The supervised
+    /// connection is optional so consumers without a live link (unit tests) can still edit/test options; at the
+    /// composition root it is always supplied, which is what enables the 断开连接 affordance.</summary>
+    public ConnectionSettingsViewModel(IConnectionTester tester, ISupervisedConnection? supervisor = null, SerialConnectionOptions? initial = null)
     {
         _tester = tester ?? throw new ArgumentNullException(nameof(tester));
-
+        _supervisor = supervisor;
         if (initial is not null)
         {
             PortName = initial.PortName;
@@ -98,6 +109,8 @@ public sealed partial class ConnectionSettingsViewModel : ObservableObject
         }
 
         _connectionState = ConnectionState.Disconnected;
+        ParityOptionsText = ParityOptions.Select(ParityText).ToArray();
+        StopBitsOptionsText = StopBitsOptions.Select(StopBitsText).ToArray();
         RecomputeValidation();
     }
 
@@ -118,6 +131,36 @@ public sealed partial class ConnectionSettingsViewModel : ObservableObject
 
     /// <summary>The hint shown while online: 在线时修改配置必须先断开连接。</summary>
     public string OnlineEditHintText => IsOnline ? "在线时修改配置必须先断开连接。" : string.Empty;
+
+    /// <summary>True while online and no connection test is in flight, so the 断开连接 affordance is usable.
+    /// A test holds the port, so the operator cannot disconnect mid-probe.</summary>
+    public bool CanDisconnect => IsOnline && !IsTesting;
+
+    /// <summary>The Chinese display label for a parity setting (无 / 奇校验 / 偶校验 / 标志 / 空格).</summary>
+    public string ParityText(Parity parity) => parity switch
+    {
+        Parity.None => "无",
+        Parity.Odd => "奇校验",
+        Parity.Even => "偶校验",
+        Parity.Mark => "标志",
+        Parity.Space => "空格",
+        _ => parity.ToString(),
+    };
+
+    /// <summary>The Chinese display label for a stop-bits setting (1 / 1.5 / 2).</summary>
+    public string StopBitsText(StopBits stopBits) => stopBits switch
+    {
+        StopBits.One => "1",
+        StopBits.Two => "2",
+        StopBits.OnePointFive => "1.5",
+        _ => stopBits.ToString(),
+    };
+
+    /// <summary>The Chinese display labels aligned with <see cref="ParityOptions"/> (order preserving).</summary>
+    public IReadOnlyList<string> ParityOptionsText { get; }
+
+    /// <summary>The Chinese display labels aligned with <see cref="StopBitsOptions"/> (order preserving).</summary>
+    public IReadOnlyList<string> StopBitsOptionsText { get; }
 
     /// <summary>Human-readable link text (在线 / 离线 / …) for the page header.</summary>
     public string ConnectionStatusText => ConnectionState switch
@@ -199,18 +242,28 @@ public sealed partial class ConnectionSettingsViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanTestConnection))]
     private async Task TestConnectionAsync(CancellationToken cancellationToken)
     {
+        // Set the in-flight flag synchronously before the first await so a double-click cannot start a
+        // second probe. The test hint on the page flips the moment the command begins to run.
+        IsTesting = true;
+
         var errors = BuildValidationErrors();
         if (errors.Count > 0)
         {
             TestResultText = $"配置无效：{string.Join("；", errors)}";
+            IsTesting = false;
             return;
         }
 
-        IsTesting = true;
         try
         {
             await _tester.TestAsync(BuildOptions(), cancellationToken);
             TestResultText = "连接成功";
+        }
+        catch (TimeoutException)
+        {
+            // The tester bounds the probe with its own timeout (see IConnectionTester); a port that
+            // never opens surfaces as a bounded timeout, not as an unhandled exception.
+            TestResultText = "连接测试超时";
         }
         catch (OperationCanceledException)
         {
@@ -232,16 +285,51 @@ public sealed partial class ConnectionSettingsViewModel : ObservableObject
     /// <summary>The test is a config action, so it requires an offline link (design §6.8) and no test in flight.</summary>
     private bool CanTestConnection() => !IsOnline && !IsTesting;
 
+    // --- Disconnect affordance (design §6.8: 修改配置前先断开当前连接) -----------------------------------
+
+    // While the form is locked (Online) the only way back to an editable config is to tear the supervised
+    // link down. Without this affordance the page would dead-end: it tells the operator 在线时修改配置必须先断开连接
+    // but offers no way to disconnect. CanDisconnect is false both when offline (nothing to disconnect) and
+    // while a test holds the port (design §6.8).
+    [RelayCommand(CanExecute = nameof(CanDisconnect))]
+    private async Task DisconnectAsync(CancellationToken cancellationToken)
+    {
+        if (!CanDisconnect || _supervisor is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _supervisor.DisconnectAsync(cancellationToken);
+            // Reflect a successful disconnect so the form unlocks immediately; the composition root also
+            // broadcasts the supervisor's own StateChanged, which would reach here on the UI thread anyway.
+            ApplyConnectionState(ConnectionState.Disconnected);
+        }
+        catch (OperationCanceledException)
+        {
+            // A cancelled disconnect leaves the link as it was — keep the online lock.
+        }
+        catch (Exception)
+        {
+            // A failed tear-down leaves the link up (it may be a transient transport error); the operator
+            // can retry. Never let it escape to the AsyncRelayCommand.
+        }
+    }
+
     // --- State application (composition-root wired) ----------------------------------------------------
 
-    /// <summary>Applies an observed supervised-link state, refreshing the form lock and the test CanExecute.</summary>
+    /// <summary>Applies an observed supervised-link state, refreshing the form lock and the CanExecute
+    /// conditions for the test and disconnect commands.</summary>
     public void ApplyConnectionState(ConnectionState state)
     {
         ConnectionState = state;
         OnPropertyChanged(nameof(IsOnline));
         OnPropertyChanged(nameof(IsFormEnabled));
         OnPropertyChanged(nameof(OnlineEditHintText));
+        OnPropertyChanged(nameof(CanDisconnect));
         TestConnectionCommand.NotifyCanExecuteChanged();
+        DisconnectCommand.NotifyCanExecuteChanged();
     }
 
     // --- Change handling --------------------------------------------------------------------------------
@@ -261,7 +349,12 @@ public sealed partial class ConnectionSettingsViewModel : ObservableObject
     partial void OnTimeoutMsTextChanged(string value) => OnSerialFieldChanged();
     partial void OnRetriesTextChanged(string value) => OnSerialFieldChanged();
 
-    partial void OnIsTestingChanged(bool value) => TestConnectionCommand.NotifyCanExecuteChanged();
+    partial void OnIsTestingChanged(bool value)
+    {
+        TestConnectionCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanDisconnect));
+        DisconnectCommand.NotifyCanExecuteChanged();
+    }
 
     partial void OnConnectionStateChanged(ConnectionState value) => OnPropertyChanged(nameof(ConnectionStatusText));
 
