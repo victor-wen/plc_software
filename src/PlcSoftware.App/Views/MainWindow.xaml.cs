@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Threading;
 using PlcSoftware.App.ViewModels;
@@ -12,9 +13,21 @@ namespace PlcSoftware.App.Views;
 /// <para>The 总览 nav entry shows the overview page in <see cref="PageHost"/> and the 操作 entry shows the
 /// operation zone (design §6.3); each page's data context is its injected view model. The other nav
 /// buttons are still visual placeholders (their pages belong to later tasks).</para>
+///
+/// <para><b>App-exit jog release is best-effort (design §6.4 应用退出).</b> On <see cref="Window.Closing"/> the
+/// manual jogs are released through a bounded await (<see cref="OnWindowClosing"/>) so the M106-M109 false
+/// writes get a short window to land before <c>App.OnExit</c> stops the host synchronously. The release is
+/// <em>not</em> guaranteed to finish exactly once — if it cannot complete (e.g. a stalled transport), the
+/// D106 watchdog (design §5.2) is the designated fallback for a latched coil. This is by design, not a bug.</para>
 /// </summary>
 public partial class MainWindow : Window
 {
+    /// <summary>The grace window given to the exit-time jog release before shutdown is allowed to proceed.
+    /// App.OnExit stops the hosted runtime synchronously immediately after the window closes, so the release
+    /// writes are awaited for at most this long (design §6.4 应用退出). If they cannot land in time, the
+    /// D106 watchdog (design §5.2) is the designated offline fallback for a latched coil.</summary>
+    private static readonly TimeSpan ExitJogReleaseGrace = TimeSpan.FromMilliseconds(500);
+
     private readonly DispatcherTimer _clock;
     private readonly OverviewView _overviewView;
     private readonly OverviewViewModel _overviewViewModel;
@@ -22,6 +35,10 @@ public partial class MainWindow : Window
     private readonly OperationViewModel _operationViewModel;
     private readonly ManualView _manualView;
     private readonly ManualViewModel _manualViewModel;
+
+    /// <summary>The window-close jog-release task, awaited (bounded) in <see cref="OnWindowClosing"/> so the
+    /// M106-M109 false write gets a chance to land before the host stops in <c>App.OnExit</c>.</summary>
+    private Task? _exitJogRelease;
 
     public MainWindow(
         OverviewViewModel overviewViewModel,
@@ -41,13 +58,32 @@ public partial class MainWindow : Window
         _manualView = manualView ?? throw new ArgumentNullException(nameof(manualView));
 
         // On window close (design §6.4 应用退出) best-effort release every jog coil so no manual coil is left
-        // latched; the D106 watchdog (§5.2) is the offline fallback.
-        Closing += (_, _) => _ = _manualViewModel.ReleaseAllJogsAsync();
+        // latched. The release is started here and awaited (bounded) so it can land before App.OnExit stops
+        // the host synchronously right after the window closes — but the await is bounded so a stalled release
+        // can never hang shutdown. The D106 watchdog (§5.2) is the offline fallback.
+        Closing += OnWindowClosing;
 
         _clock = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _clock.Tick += (_, _) => ClockText.Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         _clock.Start();
         ClockText.Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+    }
+
+    /// <summary>
+    /// Window-close jog release (design §6.4 应用退出). This handler is started on <see cref="Window.Closing"/>
+    /// so the M106-M109 false writes can be in flight <em>before</em> <c>App.OnExit</c> stops the host (which
+    /// happens synchronously right after the window closes). A <em>fresh</em> release is always started here
+    /// (releasing is idempotent) rather than reusing a possibly-stale task, so a jog pressed since any earlier
+    /// page-switch release is also released. The awaited task is bounded by <see cref="ExitJogReleaseGrace"/>
+    /// and awaited through <see cref="Task.WhenAny"/> so it <em>never</em> blocks the UI thread; if the writes
+    /// cannot complete in time, the D106 watchdog (design §5.2) is the designated offline fallback for a
+    /// latched coil. Best-effort — app-exit release is not guaranteed to finish exactly once, only to get a
+    /// bounded chance.
+    /// </summary>
+    private async void OnWindowClosing(object? sender, CancelEventArgs e)
+    {
+        _exitJogRelease = _manualViewModel.ReleaseAllJogsAsync();
+        await Task.WhenAny(_exitJogRelease, Task.Delay(ExitJogReleaseGrace));
     }
 
     /// <summary>Navigates to the overview page (design §6.2) by hosting the injected view in the page

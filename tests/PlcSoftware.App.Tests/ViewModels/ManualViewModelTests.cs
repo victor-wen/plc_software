@@ -16,9 +16,11 @@ namespace PlcSoftware.App.Tests.ViewModels;
 /// <para><b>Release (design §6.4).</b> Mouse release / mouse-leave / focus loss / page switch / window close
 /// all converge on <see cref="ManualViewModel.ReleaseAllJogsAsync"/>, which routes to
 /// <see cref="ICommandService.ReleaseJogCommandsAsync"/> and writes M106-M109 all false — no manual coil can
-/// be left latched when the operator releases or navigates away. The four triggers are exercised here at the
-/// VM level (the <c>PressAndHoldBehavior</c> invokes this same release on the mouse/focus paths; the page
-/// switch / window close wiring calls it directly).</para>
+/// be left latched when the operator releases or navigates away. The four triggers each call the SAME VM
+/// method (see the direct-call tests below); the actual <em>event-raising</em> trigger wiring (a hosted
+/// <c>Button</c> + <c>PressAndHoldBehavior</c> raising mouse/focus events, and the <c>MainWindow</c>
+/// closing / page-switch hooks) is pinned against the same method in the Windows-CI-only
+/// <c>ManualReleaseTriggerTests</c>.</para>
 ///
 /// <para><b>No WPF dependency.</b> The view model consumes Core snapshots + <see cref="ConnectionState"/>
 /// through <see cref="ManualViewModel.ApplyConnectionState"/> / <see cref="ManualViewModel.ApplySnapshot"/>
@@ -116,12 +118,27 @@ public class ManualViewModelTests
         Assert.Empty(service.ExecuteRequests);
     }
 
-    // --- Release (design §6.4: 松开鼠标 / 切页 / 窗口失焦 / 应用退出 均复位命令) ------------------------------
-    // The PressAndHoldBehavior invokes this release on the mouse/focus paths; the page-switch and window-close
-    // wiring call it directly. Every trigger writes M106-M109 all false (ReleaseJogCommandsAsync).
+    // A jog press targeting anything OTHER than the four M106-M109 jog coils is a wiring/config bug (a jog
+    // button pointed at a mode/EStop/mask coil) — it must fail fast, not be silently ignored.
 
     [Fact]
-    public async Task Mouse_release_releases_all_jog_coils()
+    public void Jog_press_non_jog_target_throws()
+    {
+        var (_, service, vm) = ManualIdle();
+
+        var ex = Assert.Throws<ArgumentException>(() => vm.PressJog(CommandTarget.AutoMode));
+
+        Assert.Equal("target", ex.ParamName);
+        Assert.Empty(service.ExecuteRequests);
+    }
+
+    // --- Release (design §6.4: 松开鼠标 / 切页 / 窗口失焦 / 应用退出 均复位命令) ------------------------------
+    // VM-level direct-call tests: every trigger converges on the SAME ReleaseAllJogsAsync. The real
+    // event-raising trigger tests (hosted Button + PressAndHoldBehavior, and the MainWindow closing &
+    // page-switch hooks) live in the Windows-CI-only ManualReleaseTriggerTests.
+
+    [Fact]
+    public async Task Mouse_release_trigger_vm_route_releases_all_coils()
     {
         var (_, service, vm) = ManualIdle();
         vm.PressJog(CommandTarget.ManualStopper);
@@ -132,7 +149,7 @@ public class ManualViewModelTests
     }
 
     [Fact]
-    public async Task Focus_loss_releases_all_jog_coils()
+    public async Task Focus_loss_trigger_vm_route_releases_all_coils()
     {
         var (_, service, vm) = ManualIdle();
 
@@ -142,7 +159,7 @@ public class ManualViewModelTests
     }
 
     [Fact]
-    public async Task Page_switch_releases_all_jog_coils()
+    public async Task Page_switch_trigger_vm_route_releases_all_coils()
     {
         var (_, service, vm) = ManualIdle();
 
@@ -152,7 +169,7 @@ public class ManualViewModelTests
     }
 
     [Fact]
-    public async Task Window_close_releases_all_jog_coils()
+    public async Task Window_close_trigger_vm_route_releases_all_coils()
     {
         var (_, service, vm) = ManualIdle();
 

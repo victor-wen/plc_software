@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -26,6 +27,18 @@ namespace PlcSoftware.App.Behaviors;
 /// </summary>
 public static class PressAndHoldBehavior
 {
+    /// <summary>Per-button "is a jog held right now" state, keyed and collected with the button so a drag-off
+    /// (<see cref="OnMouseLeave"/>) only releases a jog that was actually pressed on this button. Using a
+    /// per-button flag instead of the global <see cref="Mouse.LeftButton"/> makes the behavior self-contained
+    /// and the release path deterministically testable (a real pressed left-button state cannot be simulated
+    /// in an STA unit test).</summary>
+    private sealed class HoldState
+    {
+        public bool IsHeld { get; set; }
+    }
+
+    private static readonly ConditionalWeakTable<Button, HoldState> HoldStates = new();
+
     /// <summary>The jog coil this button controls (a <see cref="CommandTarget"/> value).</summary>
     public static readonly DependencyProperty CommandTargetProperty =
         DependencyProperty.RegisterAttached(
@@ -62,27 +75,38 @@ public static class PressAndHoldBehavior
     {
         if (sender is Button { DataContext: ManualViewModel vm } button)
         {
+            HoldStates.GetValue(button, _ => new HoldState()).IsHeld = true;
             vm.PressJog(GetCommandTarget(button));
         }
     }
 
-    private static void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e) => ReleaseAll(sender);
+    private static void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e) => ReleaseHold(sender);
 
     private static void OnMouseLeave(object sender, MouseEventArgs e)
     {
         // Only a drag off the (still-held) button stops the jog; a plain hover-leave with no jog held is a
         // harmless no-op (the all-false release writes nothing meaningful).
-        if (Mouse.LeftButton == MouseButtonState.Pressed)
+        if (sender is Button button && HoldStates.TryGetValue(button, out var state) && state.IsHeld)
         {
-            ReleaseAll(sender);
+            ReleaseHold(button);
         }
     }
 
-    private static void OnLostFocus(object sender, RoutedEventArgs e) => ReleaseAll(sender);
+    private static void OnLostFocus(object sender, RoutedEventArgs e) => ReleaseHold(sender);
 
-    private static void ReleaseAll(object sender)
+    private static void ReleaseHold(object sender)
     {
-        if (sender is Button { DataContext: ManualViewModel vm } button)
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        if (HoldStates.TryGetValue(button, out var state))
+        {
+            state.IsHeld = false;
+        }
+
+        if (button.DataContext is ManualViewModel vm)
         {
             _ = vm.ReleaseAllJogsAsync();
         }

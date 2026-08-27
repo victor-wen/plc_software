@@ -100,6 +100,11 @@ public sealed partial class ManualViewModel : ObservableObject
     /// Presses one jog coil (writes <c>true</c>). Called by <c>PressAndHoldBehavior</c> on mouse-down. The
     /// press is gated through the matching command's <c>CanExecute</c> (<see cref="CanJog"/>), so a jog that
     /// is not manual-idle is simply not started — matching a button disabled by <see cref="IsJogEnabled"/>.
+    ///
+    /// <para><b>Non-jog targets fail fast.</b> Only the four M106-M109 jog targets are valid here. Any other
+    /// target (a mode/EStop/mask coil) means a jog button was mis-configured, which is a wiring bug — it is
+    /// surfaced as an <see cref="ArgumentException"/> rather than silently ignored, so the mis-config is
+    /// caught at the behavior boundary instead of leaving the operator with a dead button.</para>
     /// </summary>
     public void PressJog(CommandTarget target)
     {
@@ -109,10 +114,12 @@ public sealed partial class ManualViewModel : ObservableObject
             CommandTarget.ManualWidthMinus => WidthMinusJogCommand,
             CommandTarget.ManualBeltJog => BeltJogCommand,
             CommandTarget.ManualStopper => StopperJogCommand,
-            _ => null,
+            _ => throw new ArgumentException(
+                $"'{target}' is not a manual jog command target — a jog button may only target M106-M109.",
+                nameof(target)),
         };
 
-        if (command?.CanExecute(null) == true)
+        if (command.CanExecute(null))
         {
             command.Execute(null);
         }

@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- The ManualReleaseTriggerTests host real WPF elements (Button/MainWindow) and raise their routed
+         events; they run only on the Windows CI runner (see that class) and compile on the WSL cross-build. -->
+    <UseWPF>true</UseWPF>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
