@@ -17,7 +17,16 @@ namespace PlcSoftware.App.Behaviors;
 /// (writes <c>true</c>, gated by <see cref="ManualViewModel.CanJog"/>); <c>MouseLeftButtonUp</c>,
 /// <c>MouseLeave</c> (while the button is still held) and <c>LostFocus</c> → a release. Every release path
 /// calls <see cref="ManualViewModel.ReleaseAllJogsAsync"/>, which writes M106-M109 all false (focus loss /
-/// window blur, page switch and window close converge on the same method — design §6.4).</para>
+/// window blur, page switch and window close converge on the same method — design §6.4).
+
+/// <para><b>Class-handled mouse events.</b> <see cref="ButtonBase"/> registers class handlers for
+/// <c>MouseLeftButtonDown</c> and <c>MouseLeftButtonUp</c> that mark them <see cref="RoutedEventArgs.Handled"/>
+/// whenever <c>ClickMode</c> is not <c>Hover</c> (the default, <c>Release</c>). A plain instance subscription
+/// (<c>+=</c>, i.e. <c>AddHandler</c> with <c>handledEventsToo: false</c>) is therefore never raised on a real
+/// <c>Button</c>, which would leave the jog press unlatched. The behavior deliberately subscribes to those two
+/// events with <c>AddHandler(..., handledEventsToo: true)</c> (and detaches via <c>RemoveHandler</c> with the
+/// same signature) so it still observes them. <c>MouseLeave</c> and <c>LostFocus</c> are not class-handled by
+/// <see cref="ButtonBase"/>, so they stay as plain instance subscriptions.</para>
 ///
 /// <para><b>Usage.</b> Set the attached <see cref="CommandTargetProperty"/> on a
 /// <see cref="ManualViewModel"/>-data-context <c>Button</c>:
@@ -60,10 +69,13 @@ public static class PressAndHoldBehavior
         if (d is Button button)
         {
             // Idempotent attach (remove-then-add) so a re-attach on the same button cannot double-subscribe.
-            button.MouseLeftButtonDown -= OnMouseLeftButtonDown;
-            button.MouseLeftButtonDown += OnMouseLeftButtonDown;
-            button.MouseLeftButtonUp -= OnMouseLeftButtonUp;
-            button.MouseLeftButtonUp += OnMouseLeftButtonUp;
+            // ButtonBase class-handles MouseLeftButtonDown/Up (marks them Handled for ClickMode != Hover, the
+            // default), so those two are subscribed/detached via AddHandler/RemoveHandler with
+            // handledEventsToo: true — a plain instance subscription would never fire on a real Button.
+            button.RemoveHandler(UIElement.MouseLeftButtonDownEvent, (MouseButtonEventHandler)OnMouseLeftButtonDown);
+            button.AddHandler(UIElement.MouseLeftButtonDownEvent, (MouseButtonEventHandler)OnMouseLeftButtonDown, true);
+            button.RemoveHandler(UIElement.MouseLeftButtonUpEvent, (MouseButtonEventHandler)OnMouseLeftButtonUp);
+            button.AddHandler(UIElement.MouseLeftButtonUpEvent, (MouseButtonEventHandler)OnMouseLeftButtonUp, true);
             button.MouseLeave -= OnMouseLeave;
             button.MouseLeave += OnMouseLeave;
             button.LostFocus -= OnLostFocus;
