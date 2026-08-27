@@ -145,7 +145,7 @@ public class DiagnosticTerminalViewModelTests
         // A FC05 write is a boolean coil value that the fake records in CoilWrites (the register-typed
         // Writes list can never observe it — it only tracks FC06 register writes). The VM confirm flow
         // does route the coil write to the client; asserting on the coil log pins that.
-        Assert.Equal(true, client.CoilWrites.Single().Value);
+        Assert.True(client.CoilWrites.Single().Value);
         Assert.False(vm.IsPending);
         Assert.False(vm.IsBusy);
     }
