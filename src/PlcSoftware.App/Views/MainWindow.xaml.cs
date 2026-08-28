@@ -8,34 +8,20 @@ using PlcSoftware.App.Services;
 using PlcSoftware.App.ViewModels;
 using PlcSoftware.Core.Abstractions;
 using PlcSoftware.Core.Configuration;
+using PlcSoftware.Core.Models;
 using PlcSoftware.Core.Services;
 
 namespace PlcSoftware.App.Views;
 
 /// <summary>
-/// Application main window. Hosts the navigation bar, the alarm banner, the page host (into which
-/// later tasks navigate their page views) and the global status bar bound to <c>MainViewModel</c>.
-/// A small dispatcher timer drives the status-bar clock (design §6.1 当前时间).
-///
-/// <para>The 总览 nav entry shows the overview page in <see cref="PageHost"/>, the 操作 entry shows the
-/// operation zone (design §6.3), the 手动 entry shows the manual page (design §6.4), the 参数 entry shows the
-/// parameter page (design §6.5), the I/O 诊断 entry shows the read-only I/O table (design §6.6), the 调试终端
-/// entry shows the structured Modbus debug terminal (design §6.5) and the 通信设置 entry shows the
-/// communication-settings page (design §6.8); each page's data context is its injected view
-/// model. The remaining nav button (报警与历史) is still a visual placeholder — its page belongs to a later task.</para>
-///
-/// <para><b>App-exit jog release is best-effort (design §6.4 应用退出).</b> On <see cref="Window.Closing"/> the
-/// manual jogs are released through a bounded await (<see cref="OnWindowClosing"/>) so the M106-M109 false
-/// writes get a short window to land before <c>App.OnExit</c> stops the host synchronously. The release is
-/// <em>not</em> guaranteed to finish exactly once — if it cannot complete (e.g. a stalled transport), the
-/// D106 watchdog (design §5.2) is the designated fallback for a latched coil. This is by design, not a bug.</para>
+/// HMI 风格主外壳：威纶通深蓝科技风（Header 蓝绿 Logo+OP10 / 黄色警告条 / 左侧垂直导航 / 右侧竖排命令列 / 底部 tab 行 / 中央 PageHost）。
+/// 保持现有登录门控逻辑（<see cref="UpdateGateUi"/>, <see cref="IsGateActive"/>）与 <see cref="ConfigurablePage"/> 兼容。
+/// 右侧命令列通过 <see cref="ICommandService"/> 执行 M100-M105 等脉冲/保持命令，IsOnline/IsRunning 由 <see cref="MainViewModel"/> 驱动。
+/// 底部 tab 全部以占位实现，数据缺失显示“待配置”。
+/// 时钟计时器同时驱动 Header 日期时间与黄色警告条时间戳。
 /// </summary>
 public partial class MainWindow : Window, IConfigurableUiNavigator
 {
-    /// <summary>The grace window given to the exit-time jog release before shutdown is allowed to proceed.
-    /// App.OnExit stops the hosted runtime synchronously immediately after the window closes, so the release
-    /// writes are awaited for at most this long (design §6.4 应用退出). If they cannot land in time, the
-    /// D106 watchdog (design §5.2) is the designated offline fallback for a latched coil.</summary>
     private static readonly TimeSpan ExitJogReleaseGrace = TimeSpan.FromMilliseconds(500);
 
     private readonly DispatcherTimer _clock;
@@ -55,10 +41,21 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
     private readonly ConnectionSettingsViewModel _connectionSettingsViewModel;
     private readonly HistoryView _historyView;
     private readonly HistoryViewModel _historyViewModel;
+    private readonly HomeView _homeView;
+    private readonly HomeViewModel _homeViewModel;
+    private readonly FunctionSelectView _functionSelectView;
+    private readonly FunctionSelectViewModel _functionSelectViewModel;
+    private readonly CylinderControlView _cylinderControlView;
+    private readonly CylinderControlViewModel _cylinderControlViewModel;
 
-    // --- Configurable HMI shell (design §7 模块化可配置界面) ---------------------------------------------
-    // Present only when config/ui-layout.json exists; the legacy hand-written navigation stays untouched
-    // otherwise. The nav bar gets one button per configured page and the default configured page is shown.
+    // 新增 HMI 页面（报警总览/操作记录/电机控制）
+    private readonly AlarmOverviewView _alarmOverviewView;
+    private readonly AlarmOverviewViewModel _alarmOverviewViewModel;
+    private readonly OperationRecordView _operationRecordView;
+    private readonly OperationRecordViewModel _operationRecordViewModel;
+    private readonly MotorControlView _motorControlView;
+    private readonly MotorControlViewModel _motorControlViewModel;
+
     private readonly ICommandService? _configCommandService;
     private readonly ParameterService? _configParameterService;
     private readonly MainViewModel? _configMainViewModel;
@@ -68,9 +65,8 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
     private readonly List<string> _configHistory = new();
     private bool _isSignedIn;
     private string? _signedInUser;
+    private string? _currentLeftTag;
 
-    /// <summary>The window-close jog-release task, awaited (bounded) in <see cref="OnWindowClosing"/> so the
-    /// M106-M109 false write gets a chance to land before the host stops in <c>App.OnExit</c>.</summary>
     private Task? _exitJogRelease;
 
     public MainWindow(
@@ -90,6 +86,18 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
         ConnectionSettingsView connectionSettingsView,
         HistoryViewModel historyViewModel,
         HistoryView historyView,
+        HomeViewModel? homeViewModel = null,
+        HomeView? homeView = null,
+        FunctionSelectViewModel? functionSelectViewModel = null,
+        FunctionSelectView? functionSelectView = null,
+        CylinderControlViewModel? cylinderControlViewModel = null,
+        CylinderControlView? cylinderControlView = null,
+        AlarmOverviewViewModel? alarmOverviewViewModel = null,
+        AlarmOverviewView? alarmOverviewView = null,
+        OperationRecordViewModel? operationRecordViewModel = null,
+        OperationRecordView? operationRecordView = null,
+        MotorControlViewModel? motorControlViewModel = null,
+        MotorControlView? motorControlView = null,
         ICommandService? configCommandService = null,
         ParameterService? configParameterService = null,
         MainViewModel? configMainViewModel = null)
@@ -112,160 +120,438 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
         _connectionSettingsView = connectionSettingsView ?? throw new ArgumentNullException(nameof(connectionSettingsView));
         _historyViewModel = historyViewModel ?? throw new ArgumentNullException(nameof(historyViewModel));
         _historyView = historyView ?? throw new ArgumentNullException(nameof(historyView));
+
+        _homeViewModel = homeViewModel ?? new HomeViewModel();
+        _homeView = homeView ?? new HomeView { DataContext = _homeViewModel };
+        _functionSelectViewModel = functionSelectViewModel ?? CreateDefaultFunctionSelectVm();
+        _functionSelectView = functionSelectView ?? new FunctionSelectView { DataContext = _functionSelectViewModel };
+        _cylinderControlViewModel = cylinderControlViewModel ?? new CylinderControlViewModel();
+        _cylinderControlView = cylinderControlView ?? new CylinderControlView { DataContext = _cylinderControlViewModel };
+
+        _alarmOverviewViewModel = alarmOverviewViewModel ?? new AlarmOverviewViewModel();
+        _alarmOverviewView = alarmOverviewView ?? new AlarmOverviewView { DataContext = _alarmOverviewViewModel };
+        _operationRecordViewModel = operationRecordViewModel ?? new OperationRecordViewModel();
+        _operationRecordView = operationRecordView ?? new OperationRecordView { DataContext = _operationRecordViewModel };
+        _motorControlViewModel = motorControlViewModel ?? new MotorControlViewModel();
+        _motorControlView = motorControlView ?? new MotorControlView { DataContext = _motorControlViewModel };
+
         _configCommandService = configCommandService;
         _configParameterService = configParameterService;
         _configMainViewModel = configMainViewModel;
 
-        // Configurable HMI shell (design §7): wire the configured pages when ui-layout.json is present.
-        // A missing/invalid layout falls back to the legacy navigation (invalid layouts throw on startup so
-        // a broken config is surfaced immediately rather than silently showing an empty screen).
+        // 绑定 MotorControl 跳转回调 → 参数页（占位卡片点击跳参数页，受离线/范围保护）
+        _motorControlViewModel.SetNavigator(() => NavigateToLeftPage("parameters"));
+
         if (_configCommandService is not null && _configParameterService is not null)
         {
             SetupConfigurablePages();
         }
 
-        // On window close (design §6.4 应用退出) best-effort release every jog coil so no manual coil is left
-        // latched. The release is started here and awaited (bounded) so it can land before App.OnExit stops
-        // the host synchronously right after the window closes — but the await is bounded so a stalled release
-        // can never hang shutdown. The D106 watchdog (§5.2) is the offline fallback.
         Closing += OnWindowClosing;
 
+        // 时钟：同时驱动 Header 日期时间 + 黄色警告条时间戳
         _clock = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _clock.Tick += (_, _) => ClockText.Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        _clock.Tick += (_, _) => TickClocks();
         _clock.Start();
-        ClockText.Text = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        TickClocks();
+
+        // 初始高亮与占位导航 wiring
+        HighlightLeftNav("home");
     }
 
-    /// <summary>
-    /// Window-close jog release (design §6.4 应用退出). This handler is started on <see cref="Window.Closing"/>
-    /// so the M106-M109 false writes can be in flight <em>before</em> <c>App.OnExit</c> stops the host (which
-    /// happens synchronously right after the window closes). A <em>fresh</em> release is always started here
-    /// (releasing is idempotent) rather than reusing a possibly-stale task, so a jog pressed since any earlier
-    /// page-switch release is also released. The awaited task is bounded by <see cref="ExitJogReleaseGrace"/>
-    /// and awaited through <see cref="Task.WhenAny"/> so it <em>never</em> blocks the UI thread; if the writes
-    /// cannot complete in time, the D106 watchdog (design §5.2) is the designated offline fallback for a
-    /// latched coil. Best-effort — app-exit release is not guaranteed to finish exactly once, only to get a
-    /// bounded chance.
-    /// </summary>
+    private void TickClocks()
+    {
+        var now = DateTime.Now;
+        // Header 右侧：完整日期时间
+        try { ClockText.Text = now.ToString("yyyy-MM-dd HH:mm:ss"); } catch { }
+        // 黄色警告条：仅时间 08:47:51 风格
+        try { WarningClockText.Text = now.ToString("HH:mm:ss"); } catch { }
+    }
+
     private async void OnWindowClosing(object? sender, CancelEventArgs e)
     {
         _exitJogRelease = _manualViewModel.ReleaseAllJogsAsync();
         await Task.WhenAny(_exitJogRelease, Task.Delay(ExitJogReleaseGrace));
     }
 
-    /// <summary>Navigates to the overview page (design §6.2) by hosting the injected view in the page
-    /// region and binding it to the overview view model.</summary>
-    private void OnOverviewClicked(object sender, RoutedEventArgs e)
-    {
-        ReleaseManualJogsOnSwitch();
-        if (_overviewView.DataContext is null)
-        {
-            _overviewView.DataContext = _overviewViewModel;
-        }
+    private void OnOverviewClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("overview");
+    private void OnOperationClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("operation");
+    private void OnManualClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("manual");
+    private void OnParametersClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("parameters");
+    private void OnIoDiagnosticsClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("io-diagnostics");
+    private void OnDiagnosticTerminalClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("diagnostic-terminal");
+    private void OnConnectionSettingsClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("connection-settings");
+    private void OnHistoryClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("history");
+    private void OnHomeClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("home");
+    private void OnFunctionSelectClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("function-select");
+    private void OnCylinderControlClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("cylinder-control");
 
-        PageHost.Content = _overviewView;
-    }
-
-    /// <summary>Navigates to the operation zone (design §6.3) by hosting the injected operation bar in the
-    /// page region and binding it to the operation view model.</summary>
-    private void OnOperationClicked(object sender, RoutedEventArgs e)
-    {
-        ReleaseManualJogsOnSwitch();
-        if (_operationBar.DataContext is null)
-        {
-            _operationBar.DataContext = _operationViewModel;
-        }
-
-        PageHost.Content = _operationBar;
-    }
-
-    /// <summary>Navigates to the manual page (design §6.4) by hosting the injected manual view in the page
-    /// region and binding it to the manual view model.</summary>
-    private void OnManualClicked(object sender, RoutedEventArgs e)
-    {
-        ReleaseManualJogsOnSwitch();
-        if (_manualView.DataContext is null)
-        {
-            _manualView.DataContext = _manualViewModel;
-        }
-
-        PageHost.Content = _manualView;
-    }
-
-    /// <summary>Navigates to the parameter page (design §6.5) by hosting the injected parameter view in the
-    /// page region and binding it to the parameter view model.</summary>
-    private void OnParametersClicked(object sender, RoutedEventArgs e)
-    {
-        ReleaseManualJogsOnSwitch();
-        if (_parametersView.DataContext is null)
-        {
-            _parametersView.DataContext = _parametersViewModel;
-        }
-
-        PageHost.Content = _parametersView;
-    }
-
-    /// <summary>Navigates to the I/O diagnostics page (design §6.6) by hosting the injected view in the page
-    /// region and binding it to the I/O diagnostics view model.</summary>
-    private void OnIoDiagnosticsClicked(object sender, RoutedEventArgs e)
-    {
-        ReleaseManualJogsOnSwitch();
-        if (_ioDiagnosticsView.DataContext is null)
-        {
-            _ioDiagnosticsView.DataContext = _ioDiagnosticsViewModel;
-        }
-
-        PageHost.Content = _ioDiagnosticsView;
-    }
-
-    /// <summary>Navigates to the Modbus debug terminal (design §6.5) by hosting the injected view in the page
-    /// region and binding it to the diagnostic-terminal view model.</summary>
-    private void OnDiagnosticTerminalClicked(object sender, RoutedEventArgs e)
-    {
-        ReleaseManualJogsOnSwitch();
-        if (_diagnosticTerminalView.DataContext is null)
-        {
-            _diagnosticTerminalView.DataContext = _diagnosticTerminalViewModel;
-        }
-
-        PageHost.Content = _diagnosticTerminalView;
-    }
-
-    /// <summary>Navigates to the communication-settings page (design §6.8) by hosting the injected view in the
-    /// page region and binding it to the connection-settings view model.</summary>
-    private void OnConnectionSettingsClicked(object sender, RoutedEventArgs e)
-    {
-        ReleaseManualJogsOnSwitch();
-        if (_connectionSettingsView.DataContext is null)
-        {
-            _connectionSettingsView.DataContext = _connectionSettingsViewModel;
-        }
-
-        PageHost.Content = _connectionSettingsView;
-    }
-
-    /// <summary>Releases every manual jog coil when navigating away from the manual page so a press-and-hold
-    /// jog is not left latched by the page switch (design §6.4 切页). Best-effort; the D106 watchdog (§5.2)
-    /// is the offline fallback.</summary>
     private void ReleaseManualJogsOnSwitch() => _ = _manualViewModel.ReleaseAllJogsAsync();
 
-    /// <summary>Navigates to the 报警与历史 page (design §7) by hosting the injected view in the page region
-    /// and binding it to the history view model.</summary>
-    private void OnHistoryClicked(object sender, RoutedEventArgs e)
+    // --- 左侧垂直导航：主页面/报警总页面/操作记录/气缸控制/电机控制/功能选择 -----------------------
+    private void OnLeftNavItemClicked(object sender, RoutedEventArgs e)
     {
-        ReleaseManualJogsOnSwitch();
-        if (_historyView.DataContext is null)
+        if (sender is Button btn && btn.Tag is string tag && !string.IsNullOrWhiteSpace(tag))
         {
-            _historyView.DataContext = _historyViewModel;
+            NavigateToLeftPage(tag);
         }
-
-        PageHost.Content = _historyView;
     }
 
-    // --- Configurable HMI shell (design §7 模块化可配置界面) ------------------------------------------
+    private void NavigateToLeftPage(string tag)
+    {
+        // 登录门控：未登录时任何左侧导航都应被 Navigate 拦截到登录页
+        if (IsGateActive && tag != LoginPageId())
+        {
+            if (_configLayout is not null && LoginPageId() is { } login)
+            {
+                Navigate(login);
+                return;
+            }
+        }
 
-    /// <summary>Loads config/ui-layout.json (next to the binaries) and wires the configured pages: one nav-bar
-    /// button per page plus the default page shown in the page host.</summary>
+        ReleaseManualJogsOnSwitch();
+        HighlightLeftNav(tag);
+
+        // 优先匹配 HMI 固定页面
+        switch (tag)
+        {
+            case "home":
+                if (_homeView.DataContext is null) _homeView.DataContext = _homeViewModel;
+                PageHost.Content = _homeView;
+                RecordLeftHistory("home");
+                return;
+            case "alarm-overview":
+            case "alarm":
+                if (_alarmOverviewView.DataContext is null) _alarmOverviewView.DataContext = _alarmOverviewViewModel;
+                PageHost.Content = _alarmOverviewView;
+                RecordLeftHistory("alarm-overview");
+                return;
+            case "operation-record":
+                if (_operationRecordView.DataContext is null) _operationRecordView.DataContext = _operationRecordViewModel;
+                PageHost.Content = _operationRecordView;
+                RecordLeftHistory("operation-record");
+                return;
+            case "cylinder-control":
+                if (_cylinderControlView.DataContext is null) _cylinderControlView.DataContext = _cylinderControlViewModel;
+                PageHost.Content = _cylinderControlView;
+                RecordLeftHistory("cylinder-control");
+                return;
+            case "motor-control":
+                if (_motorControlView.DataContext is null) _motorControlView.DataContext = _motorControlViewModel;
+                PageHost.Content = _motorControlView;
+                RecordLeftHistory("motor-control");
+                return;
+            case "function-select":
+                if (_functionSelectView.DataContext is null) _functionSelectView.DataContext = _functionSelectViewModel;
+                PageHost.Content = _functionSelectView;
+                RecordLeftHistory("function-select");
+                return;
+            case "overview":
+                if (_overviewView.DataContext is null) _overviewView.DataContext = _overviewViewModel;
+                PageHost.Content = _overviewView;
+                RecordLeftHistory("overview");
+                return;
+            case "operation":
+                if (_operationBar.DataContext is null) _operationBar.DataContext = _operationViewModel;
+                PageHost.Content = _operationBar;
+                RecordLeftHistory("operation");
+                return;
+            case "manual":
+                if (_manualView.DataContext is null) _manualView.DataContext = _manualViewModel;
+                PageHost.Content = _manualView;
+                RecordLeftHistory("manual");
+                return;
+            case "parameters":
+                if (_parametersView.DataContext is null) _parametersView.DataContext = _parametersViewModel;
+                PageHost.Content = _parametersView;
+                RecordLeftHistory("parameters");
+                return;
+            case "io-diagnostics":
+                if (_ioDiagnosticsView.DataContext is null) _ioDiagnosticsView.DataContext = _ioDiagnosticsViewModel;
+                PageHost.Content = _ioDiagnosticsView;
+                RecordLeftHistory("io-diagnostics");
+                return;
+            case "diagnostic-terminal":
+                if (_diagnosticTerminalView.DataContext is null) _diagnosticTerminalView.DataContext = _diagnosticTerminalViewModel;
+                PageHost.Content = _diagnosticTerminalView;
+                RecordLeftHistory("diagnostic-terminal");
+                return;
+            case "connection-settings":
+                if (_connectionSettingsView.DataContext is null) _connectionSettingsView.DataContext = _connectionSettingsViewModel;
+                PageHost.Content = _connectionSettingsView;
+                RecordLeftHistory("connection-settings");
+                return;
+            case "history":
+                if (_historyView.DataContext is null) _historyView.DataContext = _historyViewModel;
+                PageHost.Content = _historyView;
+                RecordLeftHistory("history");
+                return;
+        }
+
+        // 尝试作为可配置页面 id 导航
+        if (_configLayout?.FindPage(tag) is not null)
+        {
+            Navigate(tag);
+            HighlightLeftNav(tag);
+            return;
+        }
+
+        // 未知：占位
+        ShowPlaceholder(tag, "待配置");
+    }
+
+    private void RecordLeftHistory(string tag)
+    {
+        if (_configHistory.Count == 0 || _configHistory[^1] != tag)
+            _configHistory.Add(tag);
+    }
+
+    private void HighlightLeftNav(string? tag)
+    {
+        _currentLeftTag = tag;
+        if (LeftNavPanel is null) return;
+        foreach (var child in LeftNavPanel.Children)
+        {
+            if (child is Button b && b.Tag is string t)
+            {
+                var isSelected = string.Equals(t, tag, StringComparison.Ordinal);
+                b.Style = TryFindResource(isSelected ? "HmiLeftNavSelectedStyle" : "HmiLeftNavButtonStyle") as Style
+                          ?? b.Style;
+            }
+            else if (child is StackPanel sp && sp.Name == "LeftNavConfigContainer")
+            {
+                foreach (var inner in sp.Children)
+                {
+                    if (inner is Button ib && ib.Tag is string it)
+                    {
+                        var isSel = string.Equals(it, tag, StringComparison.Ordinal);
+                        ib.Style = TryFindResource(isSel ? "HmiLeftNavSelectedStyle" : "HmiLeftNavButtonStyle") as Style
+                                   ?? ib.Style;
+                    }
+                }
+            }
+        }
+        HighlightBottomTabs(tag);
+    }
+
+    private void HighlightBottomTabs(string? tag)
+    {
+        if (BottomTabPanel is null) return;
+        // 将左侧 tag 映射到对应的底部高亮键
+        var map = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["history"] = "alarm",
+            ["alarm-overview"] = "alarm",
+            ["alarm"] = "alarm",
+            ["io-diagnostics"] = "io-diagnostics",
+            ["diagnostic-terminal"] = "diagnostic-terminal",
+        };
+        var bottomKey = tag != null && map.TryGetValue(tag, out var k) ? k : tag;
+        foreach (var child in BottomTabPanel.Children)
+        {
+            if (child is Button b && b.Tag is string t)
+            {
+                var isSel = string.Equals(t, bottomKey, StringComparison.Ordinal);
+                b.Style = TryFindResource(isSel ? "HmiBottomTabSelectedStyle" : "HmiBottomTabStyle") as Style
+                          ?? b.Style;
+            }
+        }
+    }
+
+    // --- 右侧垂直命令列：手动/自动/启动/停止红/复位/初始化 -----------------------------------
+    private async void OnRightManualClicked(object sender, RoutedEventArgs e) => await ExecuteManualModeAsync();
+    private async void OnRightAutoClicked(object sender, RoutedEventArgs e) => await ExecuteAutoModeAsync();
+    private async void OnRightStartClicked(object sender, RoutedEventArgs e) => await ExecutePulseAsync(CommandTarget.Start, "启动");
+    private async void OnRightStopClicked(object sender, RoutedEventArgs e) => await ExecutePulseAsync(CommandTarget.Stop, "停止");
+    private async void OnRightResetClicked(object sender, RoutedEventArgs e) => await ExecutePulseAsync(CommandTarget.Reset, "复位");
+    private async void OnRightInitClicked(object sender, RoutedEventArgs e) => await ExecutePulseAsync(CommandTarget.Reset, "初始化");
+
+    private async Task ExecuteManualModeAsync()
+    {
+        if (_configCommandService is null) return;
+        // 手动：M104=0, M105=0 互斥组合
+        var r1 = await _configCommandService.ExecuteAsync(new CommandRequest(CommandTarget.AutoMode, false), CancellationToken.None);
+        var r2 = await _configCommandService.ExecuteAsync(new CommandRequest(CommandTarget.BypassMode, false), CancellationToken.None);
+        ReportCommandIfFailed("手动模式", r1.Status == CommandStatus.Success ? r2 : r1);
+    }
+
+    private async Task ExecuteAutoModeAsync()
+    {
+        if (_configCommandService is null) return;
+        // 自动：M104=1, M105=0
+        var r1 = await _configCommandService.ExecuteAsync(new CommandRequest(CommandTarget.AutoMode, true), CancellationToken.None);
+        var r2 = await _configCommandService.ExecuteAsync(new CommandRequest(CommandTarget.BypassMode, false), CancellationToken.None);
+        ReportCommandIfFailed("自动模式", r1.Status == CommandStatus.Success ? r2 : r1);
+    }
+
+    private async Task ExecutePulseAsync(CommandTarget target, string label)
+    {
+        if (_configCommandService is null) return;
+        try
+        {
+            var result = await _configCommandService.ExecuteAsync(new CommandRequest(target), CancellationToken.None);
+            ReportCommandIfFailed(label, result);
+        }
+        catch (Exception ex)
+        {
+            ReportWarning($"{label}失败：{ex.Message}");
+        }
+    }
+
+    private void ReportCommandIfFailed(string label, CommandResult result)
+    {
+        if (result.Status != CommandStatus.Success)
+        {
+            ReportWarning($"{label}：{result.Message ?? result.Status.ToString()}");
+        }
+    }
+
+    private void ReportWarning(string text)
+    {
+        try
+        {
+            if (_configMainViewModel is not null)
+                _configMainViewModel.WarningText = text;
+        }
+        catch { }
+        // 兜底：若未注入 MainViewModel，短暂以 MessageBox 提示（仅失败路径）
+        if (_configMainViewModel is null)
+        {
+            try { MessageBox.Show(text, "PLC 上位机", MessageBoxButton.OK, MessageBoxImage.Warning); } catch { }
+        }
+    }
+
+    // --- 底部 tab 行：报警/前后交互/离线设置/延时处理/I-O/自动条件/诊断/工位视图/探针寿命 -----------
+    private void OnBottomTabClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b || b.Tag is not string tag) return;
+        ReleaseManualJogsOnSwitch();
+        switch (tag)
+        {
+            case "alarm":
+                NavigateToLeftPage("alarm-overview");
+                HighlightBottomTabs("alarm");
+                break;
+            case "front-back":
+                ShowPlaceholder("前后交互", "待配置");
+                HighlightBottomTabs(tag);
+                break;
+            case "offline-set":
+                // 离线设置 → 通信设置页
+                NavigateToLeftPage("connection-settings");
+                HighlightBottomTabs(tag);
+                break;
+            case "delay":
+                ShowPlaceholder("延时处理", "待配置");
+                HighlightBottomTabs(tag);
+                break;
+            case "io-diagnostics":
+                NavigateToLeftPage("io-diagnostics");
+                HighlightBottomTabs(tag);
+                break;
+            case "auto-cond":
+                ShowPlaceholder("自动条件", "待配置");
+                HighlightBottomTabs(tag);
+                break;
+            case "diagnostic-terminal":
+                NavigateToLeftPage("diagnostic-terminal");
+                HighlightBottomTabs(tag);
+                break;
+            case "station-view":
+                ShowPlaceholder("工位视图", "待配置");
+                HighlightBottomTabs(tag);
+                break;
+            case "probe-life":
+                ShowPlaceholder("探针寿命", "待配置");
+                HighlightBottomTabs(tag);
+                break;
+            default:
+                ShowPlaceholder(tag, "待配置");
+                HighlightBottomTabs(tag);
+                break;
+        }
+    }
+
+    private void ShowPlaceholder(string title, string detail)
+    {
+        var titleBlock = new TextBlock
+        {
+            Text = title,
+            FontSize = 22,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)TryFindResource("ConfigUiTextBrush") ?? Brushes.White,
+            Margin = new Thickness(0, 0, 0, 8),
+        };
+        var detailBlock = new TextBlock
+        {
+            Text = detail,
+            FontSize = 16,
+            Foreground = (Brush)TryFindResource("ConfigUiMutedTextBrush") ?? Brushes.Gray,
+            Margin = new Thickness(0, 0, 0, 12),
+        };
+        var hint = new TextBlock
+        {
+            Text = "数据缺失显示“待配置” · 按威纶通深蓝 HMI 风格占位，后续可配置真实页面或在 ui-layout.json 中声明 pageHost。",
+            FontSize = 12,
+            Foreground = (Brush)TryFindResource("ConfigUiMutedTextBrush") ?? Brushes.Gray,
+            Opacity = 0.85,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 8, 0, 0),
+        };
+        var panel = new StackPanel { Margin = new Thickness(28), VerticalAlignment = VerticalAlignment.Center };
+        panel.Children.Add(titleBlock);
+        panel.Children.Add(detailBlock);
+        panel.Children.Add(hint);
+        var card = new Border
+        {
+            Background = (Brush)TryFindResource("ConfigUiPanelBrush") ?? new SolidColorBrush(Color.FromRgb(0x10, 0x3E, 0x63)),
+            BorderBrush = (Brush)TryFindResource("ConfigUiGridLineBrush") ?? Brushes.Gray,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(24),
+            Margin = new Thickness(24),
+            Child = panel,
+        };
+        var outer = new Grid { Background = (Brush)TryFindResource("ConfigUiBackgroundBrush") ?? Brushes.Transparent };
+        outer.Children.Add(card);
+        PageHost.Content = outer;
+    }
+
+    public void NavigateToIoDiagnostics() => NavigateToLeftPage("io-diagnostics");
+    public void NavigateToDiagnosticTerminal() => NavigateToLeftPage("diagnostic-terminal");
+    public void NavigateToPlaceholder(string title, string hint) => ShowPlaceholder(title, hint);
+
+    private static FunctionSelectViewModel CreateDefaultFunctionSelectVm()
+    {
+        var gate = new TestOfflineGate();
+        var client = new TestNoopModbusClient();
+        var delay = new TaskDelay();
+        var service = new CommandService(client, gate, delay);
+        return new FunctionSelectViewModel(service, gate);
+    }
+
+    private sealed class TestOfflineGate : ICommandGate
+    {
+        public bool IsOnline => false;
+        public bool IsManualIdle => false;
+    }
+
+    private sealed class TestNoopModbusClient : IModbusClient
+    {
+        public Task ConnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task DisconnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<bool[]> ReadCoilsAsync(byte slaveId, ushort startAddress, ushort count, CancellationToken cancellationToken) => Task.FromResult(Array.Empty<bool>());
+        public Task<bool[]> ReadDiscreteInputsAsync(byte slaveId, ushort startAddress, ushort count, CancellationToken cancellationToken) => Task.FromResult(Array.Empty<bool>());
+        public Task<ushort[]> ReadHoldingRegistersAsync(byte slaveId, ushort startAddress, ushort count, CancellationToken cancellationToken) => Task.FromResult(Array.Empty<ushort>());
+        public Task<ushort[]> ReadInputRegistersAsync(byte slaveId, ushort startAddress, ushort count, CancellationToken cancellationToken) => Task.FromResult(Array.Empty<ushort>());
+        public Task WriteSingleCoilAsync(byte slaveId, ushort address, bool value, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task WriteSingleRegisterAsync(byte slaveId, ushort address, ushort value, CancellationToken cancellationToken) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private void OnHistoryClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("history");
+
+    // --- Configurable HMI shell (design §7 模块化可配置界面) ------------------------------------------
     private void SetupConfigurablePages()
     {
         try
@@ -287,13 +573,10 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
                         "PLC 上位机", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
                 catch { }
-                return; // legacy hand-written navigation stays in charge.
+                return;
             }
 
-            if (layout is null)
-            {
-                return; // legacy hand-written navigation stays in charge.
-            }
+            if (layout is null) return;
 
             _configLayout = layout;
 
@@ -305,150 +588,145 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
                 Margin = new Thickness(8, 0, 8, 0),
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            ConfigNavItems.Children.Add(separator);
+            try { ConfigNavItems.Children.Add(separator); } catch { }
 
             var loginPageId = LoginPageId();
             foreach (var page in layout.Pages)
             {
-                // 登录页永不进顶栏导航：登录前顶栏本就隐藏，登录后更不应再出现“登录”入口。
-                if (page.Id == loginPageId)
+                if (page.Id == loginPageId) continue;
+                try
                 {
-                    continue;
+                    var button = new Button
+                    {
+                        Content = string.IsNullOrWhiteSpace(page.Title) ? page.Id : page.Title,
+                        Style = TryFindResource("NavButtonStyle") as Style,
+                    };
+                    var pageId = page.Id;
+                    button.Click += (_, _) => Navigate(pageId);
+                    ConfigNavItems.Children.Add(button);
                 }
-
-                var button = new Button
-                {
-                    Content = string.IsNullOrWhiteSpace(page.Title) ? page.Id : page.Title,
-                    Style = TryFindResource("NavButtonStyle") as Style,
-                };
-                var pageId = page.Id;
-                button.Click += (_, _) => Navigate(pageId);
-                ConfigNavItems.Children.Add(button);
+                catch { }
             }
+
+            // 将可配置页面同步到左侧垂直导航（除已固定的 6 个 HMI 主页面外，其余动态追加）
+            PopulateLeftNavFromConfig();
 
             UpdateGateUi();
             try
             {
-                Navigate(layout.DefaultPage.Id);
+                // 默认页：若为 home/新 HMI 页则走左侧直达，否则走可配置导航
+                var def = layout.DefaultPage?.Id ?? "home";
+                if (IsKnownHmiTag(def))
+                    NavigateToLeftPage(def);
+                else
+                    Navigate(def);
             }
             catch (Exception ex)
             {
                 var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
                 try { PlcSoftware.App.Services.CrashReporter.Record(DateTime.Now, ex, logDir); } catch { }
-                try
-                {
-                    MessageBox.Show($"初始导航失败：{ex.Message}\n\n日志：{logDir}", "PLC 上位机",
-                        MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-                catch { }
+                try { MessageBox.Show($"初始导航失败：{ex.Message}\n\n日志：{logDir}", "PLC 上位机", MessageBoxButton.OK, MessageBoxImage.Error); } catch { }
             }
         }
         catch (Exception ex)
         {
             var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
             try { PlcSoftware.App.Services.CrashReporter.Record(DateTime.Now, ex, logDir); } catch { }
-            try
-            {
-                MessageBox.Show($"配置界面初始化失败：{ex.Message}\n\n日志：{logDir}", "PLC 上位机",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            catch { }
+            try { MessageBox.Show($"配置界面初始化失败：{ex.Message}\n\n日志：{logDir}", "PLC 上位机", MessageBoxButton.OK, MessageBoxImage.Error); } catch { }
         }
     }
 
-    /// <summary>True while the configurable login gate is active (login required and not yet signed in).</summary>
+    private bool IsKnownHmiTag(string id) => id is "home" or "alarm-overview" or "operation-record" or "cylinder-control" or "motor-control" or "function-select";
+
+    private void PopulateLeftNavFromConfig()
+    {
+        if (_configLayout is null || LeftNavConfigContainer is null) return;
+        var known = new HashSet<string>(StringComparer.Ordinal) { "home", "alarm-overview", "operation-record", "cylinder-control", "motor-control", "function-select", "login", "overview", "operation", "parameters", "io-diagnostics", "history", "position-loading", "diagnostic-terminal", "connection-settings", "manual" };
+        var loginId = LoginPageId();
+        foreach (var page in _configLayout.Pages)
+        {
+            if (page.Id == loginId) continue;
+            if (known.Contains(page.Id)) continue;
+            var btn = new Button
+            {
+                Content = string.IsNullOrWhiteSpace(page.Title) ? page.Id : page.Title,
+                Style = TryFindResource("HmiLeftNavButtonStyle") as Style,
+                Tag = page.Id,
+            };
+            var pid = page.Id;
+            btn.Click += (_, _) => Navigate(pid);
+            LeftNavConfigContainer.Children.Add(btn);
+        }
+    }
+
     private bool IsGateActive => _configLayout?.App.LoginRequired == true && !_isSignedIn;
 
-    /// <summary>Shows/hides the top navigation buttons while the login gate is active so the shell is a pure
-    /// sign-in screen until credentials are accepted (the <see cref="Navigate"/> gate still guards programmatic
-    /// navigations).</summary>
     private void UpdateGateUi()
     {
         var gateActive = IsGateActive;
-        ConfigNavItems.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
-        // Legacy nav buttons are direct Buttons of NavButtonsPanel (before ConfigNavItems). Hide/disable them
-        // while gated so 总览/操作/… cannot bypass the configurable gate by hosting a legacy view directly.
-        foreach (var child in NavButtonsPanel.Children)
+        try { ConfigNavItems.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible; } catch { }
+        try
         {
-            if (child is Button btn)
+            foreach (var child in NavButtonsPanel.Children)
             {
-                // ConfigNavItems and SignInPanel are panels, not Buttons, so only the 8 legacy nav buttons arrive here.
-                btn.IsEnabled = !gateActive;
-                btn.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
+                if (child is Button btn)
+                {
+                    btn.IsEnabled = !gateActive;
+                    btn.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
+                }
             }
         }
-        // Keep the title TextBlock visible even when gated (it is not a Button).
+        catch { }
+        // 新 HMI 壳：门控时隐藏侧边/底部，仅保留中央登录页
+        try
+        {
+            if (LeftNavPanel is not null) LeftNavPanel.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
+            // 左侧 Border 的父级仍可见，仅内部 StackPanel 隐藏即可保持背景
+            // 右侧命令列与底部 tab 同理
+            if (RightCommandPanel is not null) RightCommandPanel.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
+            if (BottomTabPanel is not null) BottomTabPanel.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
+            // 也可通过外层 Border Visibility 控制（若需完全隐藏侧边栏背景，可访问 Parent）
+            var leftBorder = LeftNavPanel?.Parent as Border;
+            if (leftBorder != null) leftBorder.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
+            var rightBorder = RightCommandPanel?.Parent as Border;
+            if (rightBorder != null) rightBorder.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
+            var bottomBorder = BottomTabPanel?.Parent?.Parent as Border;
+            // BottomTabPanel 在 ScrollViewer 内，ScrollViewer 在 Border 内
+            if (bottomBorder is null && BottomTabPanel?.Parent is ScrollViewer sv) bottomBorder = sv.Parent as Border;
+            if (bottomBorder != null) bottomBorder.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
+        }
+        catch { }
     }
 
-    /// <inheritdoc />
     public void Navigate(string pageId)
     {
-        if (_configLayout is null)
-        {
-            return;
-        }
-
+        if (_configLayout is null) return;
         var page = _configLayout.FindPage(pageId);
-        if (page is null)
-        {
-            return;
-        }
-
+        if (page is null) return;
         var loginPage = LoginPageId();
-
-        // 登录后禁止再回到登录页：登录页已从顶栏移除，编程式跳转也拦住。
-        if (_isSignedIn && pageId == loginPage)
+        if (_isSignedIn && pageId == loginPage) return;
+        if (_configLayout.App.LoginRequired && !_isSignedIn && (pageId != loginPage || loginPage is null))
         {
-            return;
-        }
-
-        // Sign-in gate (design §7 登录机制): while the shell requires login and the visitor is not
-        // signed in, every page except the sign-in page redirects to the sign-in page.
-        if (_configLayout.App.LoginRequired && !_isSignedIn
-            && (pageId != loginPage || loginPage is null))
-        {
-            if (loginPage is null)
-            {
-                return; // no sign-in page configured; the gate cannot be satisfied — stay put.
-            }
-
+            if (loginPage is null) return;
             NavigateTo(loginPage);
             return;
         }
-
         NavigateTo(pageId);
     }
 
-    /// <summary>Shows the (already gated) page in the host.</summary>
     private void NavigateTo(string pageId)
     {
-        if (_configLayout is null)
-        {
-            return;
-        }
-
+        if (_configLayout is null) return;
         ReleaseManualJogsOnSwitch();
-        // 登录页不进历史：登录后 Back/Up/Down 永远回不到登录页。
         var loginPageHistory = LoginPageId();
         if (pageId == loginPageHistory)
         {
-            if (_configHistory.Count == 0 || _configHistory[^1] != pageId)
-            {
-                _configHistory.Add(pageId);
-            }
+            if (_configHistory.Count == 0 || _configHistory[^1] != pageId) _configHistory.Add(pageId);
         }
         else
         {
-            // 新页面落地时抹掉历史中残留的登录页，彻底切断回退链路。
-            if (loginPageHistory is not null)
-            {
-                _configHistory.RemoveAll(id => id == loginPageHistory);
-            }
-
-            if (_configHistory.Count == 0 || _configHistory[^1] != pageId)
-            {
-                _configHistory.Add(pageId);
-            }
+            if (loginPageHistory is not null) _configHistory.RemoveAll(id => id == loginPageHistory);
+            if (_configHistory.Count == 0 || _configHistory[^1] != pageId) _configHistory.Add(pageId);
         }
 
         if (!_configPageVms.TryGetValue(pageId, out var vm))
@@ -457,158 +735,89 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
                 this, _configCommandService!, _configParameterService!, JsonTileStore.Default(), _configMainViewModel);
             _configPageVms[pageId] = vm;
         }
-
         if (!_configPageViews.TryGetValue(pageId, out var view))
         {
             view = new ConfigurablePageView();
             _configPageViews[pageId] = view;
         }
-
         view.SetHostedContent(ResolveLegacyView(vm.HostedViewName));
         view.Apply(vm);
         PageHost.Content = view;
+        HighlightLeftNav(pageId);
     }
 
-    /// <inheritdoc />
     public void SignIn(string username)
     {
         _isSignedIn = true;
         _signedInUser = username;
-        SignedInText.Text = $"已登录：{username}";
-        SignOutButton.Visibility = Visibility.Visible;
+        try { SignedInText.Text = $"已登录：{username}"; } catch { }
+        try { SignOutButton.Visibility = Visibility.Visible; } catch { }
         UpdateGateUi();
+        HighlightLeftNav(_currentLeftTag ?? "home");
     }
 
-    /// <inheritdoc />
     public void SignOut()
     {
         _isSignedIn = false;
         _signedInUser = null;
-        SignedInText.Text = string.Empty;
-        SignOutButton.Visibility = Visibility.Collapsed;
-        foreach (var vm in _configPageVms.Values)
-        {
-            vm.SignOut();
-        }
-
+        try { SignedInText.Text = string.Empty; } catch { }
+        try { SignOutButton.Visibility = Visibility.Collapsed; } catch { }
+        foreach (var vm in _configPageVms.Values) vm.SignOut();
         UpdateGateUi();
-        if (_configLayout is not null && LoginPageId() is { } login)
-        {
-            NavigateTo(login); // back to the sign-in gate.
-        }
+        if (_configLayout is not null && LoginPageId() is { } login) NavigateTo(login);
     }
 
     private void OnSignOutClicked(object sender, RoutedEventArgs e) => SignOut();
 
-    /// <summary>The id of the page hosting the loginForm module, or null.</summary>
     private string? LoginPageId()
         => _configLayout?.Pages.FirstOrDefault(p => p.Modules.Any(m => m.Type == UiModuleType.LoginForm))?.Id;
 
     private string? CurrentConfigPageId()
         => _configHistory.Count > 0 ? _configHistory[^1] : null;
 
-    /// <inheritdoc />
     public void NavigateUp()
     {
-        if (_configLayout is null)
-        {
-            return;
-        }
-
+        if (_configLayout is null) return;
         var loginPage = LoginPageId();
         var current = CurrentConfigPageId();
         var index = _configLayout.Pages.FindIndex(p => p.Id == current);
-        if (index <= 0)
-        {
-            return;
-        }
-
-        // 已登录后 Up 跳过登录页。
+        if (index <= 0) return;
         var prev = index - 1;
-        while (prev >= 0 && _isSignedIn && _configLayout.Pages[prev].Id == loginPage)
-        {
-            prev--;
-        }
-
-        if (prev < 0)
-        {
-            return;
-        }
-
+        while (prev >= 0 && _isSignedIn && _configLayout.Pages[prev].Id == loginPage) prev--;
+        if (prev < 0) return;
         Navigate(_configLayout.Pages[prev].Id);
     }
 
-    /// <inheritdoc />
     public void NavigateDown()
     {
-        if (_configLayout is null)
-        {
-            return;
-        }
-
+        if (_configLayout is null) return;
         var loginPage = LoginPageId();
         var current = CurrentConfigPageId();
         var index = _configLayout.Pages.FindIndex(p => p.Id == current);
-        if (index < 0 || index >= _configLayout.Pages.Count - 1)
-        {
-            return;
-        }
-
+        if (index < 0 || index >= _configLayout.Pages.Count - 1) return;
         var next = index + 1;
-        while (next < _configLayout.Pages.Count && _isSignedIn && _configLayout.Pages[next].Id == loginPage)
-        {
-            next++;
-        }
-
-        if (next >= _configLayout.Pages.Count)
-        {
-            return;
-        }
-
+        while (next < _configLayout.Pages.Count && _isSignedIn && _configLayout.Pages[next].Id == loginPage) next++;
+        if (next >= _configLayout.Pages.Count) return;
         Navigate(_configLayout.Pages[next].Id);
     }
 
-    /// <inheritdoc />
     public void NavigateBack()
     {
-        if (_configHistory.Count <= 1)
-        {
-            return;
-        }
-
+        if (_configHistory.Count <= 1) return;
         var loginPage = LoginPageId();
         _configHistory.RemoveAt(_configHistory.Count - 1);
-        // 登录后 Back 跳过登录页（并把历史里的登录痕迹清掉）。
-        while (_configHistory.Count > 0 && _isSignedIn && _configHistory[^1] == loginPage)
-        {
-            _configHistory.RemoveAt(_configHistory.Count - 1);
-        }
-
-        if (_configHistory.Count == 0)
-        {
-            return;
-        }
-
+        while (_configHistory.Count > 0 && _isSignedIn && _configHistory[^1] == loginPage) _configHistory.RemoveAt(_configHistory.Count - 1);
+        if (_configHistory.Count == 0) return;
         Navigate(_configHistory[^1]);
     }
 
-    /// <inheritdoc />
     public void ShowLogin()
     {
-        if (_configLayout is null)
-        {
-            return;
-        }
-
-        var loginPage = _configLayout.Pages.FirstOrDefault(p =>
-            p.Modules.Any(m => m.Type == UiModuleType.LoginForm));
-        if (loginPage is not null)
-        {
-            Navigate(loginPage.Id);
-        }
+        if (_configLayout is null) return;
+        var loginPage = _configLayout.Pages.FirstOrDefault(p => p.Modules.Any(m => m.Type == UiModuleType.LoginForm));
+        if (loginPage is not null) Navigate(loginPage.Id);
     }
 
-    /// <summary>Resolves a pageHost module's legacy view name to the injected view instance (null = unknown).</summary>
     private FrameworkElement? ResolveLegacyView(string? viewName)
         => viewName switch
         {
@@ -620,6 +829,12 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
             "DiagnosticTerminalView" => _diagnosticTerminalView,
             "ConnectionSettingsView" => _connectionSettingsView,
             "HistoryView" => _historyView,
+            "HomeView" => _homeView,
+            "FunctionSelectView" => _functionSelectView,
+            "CylinderControlView" => _cylinderControlView,
+            "AlarmOverviewView" => _alarmOverviewView,
+            "OperationRecordView" => _operationRecordView,
+            "MotorControlView" => _motorControlView,
             _ => null,
         };
 }

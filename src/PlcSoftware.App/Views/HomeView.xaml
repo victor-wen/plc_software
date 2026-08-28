@@ -1,0 +1,303 @@
+<UserControl x:Class="PlcSoftware.App.Views.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <Style x:Key="DataSectionStyle" TargetType="StackPanel">
+            <Setter Property="Opacity" Value="1" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsOnline}" Value="False">
+                    <Setter Property="Opacity" Value="0.4" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="4,12,4,4" />
+        </Style>
+        <Style x:Key="CardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Margin" Value="4" />
+        </Style>
+        <Style x:Key="CardTitleStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style x:Key="CardValueStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource PrimaryForegroundBrush}" />
+            <Setter Property="FontSize" Value="22" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,4,0,0" />
+        </Style>
+        <Style x:Key="NavBottomButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#EDEFF2" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryForegroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="MinWidth" Value="88" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.92" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="DeviceBoxStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="12" />
+        </Style>
+        <Style x:Key="FlowRowStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Margin" Value="4,0,4,4" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Header: title + connection + last update -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="4,0,4,8">
+                <TextBlock Text="主页"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource PrimaryForegroundBrush}" />
+                <TextBlock Text="连接：" Style="{StaticResource CardTitleStyle}" Margin="16,6,2,0" />
+                <TextBlock Text="{Binding ConnectionStatusText}" Margin="0,6,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource StatusAlertBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource StatusOkBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="最后更新：" Style="{StaticResource CardTitleStyle}" Margin="24,6,2,0" />
+                <TextBlock Text="{Binding LastUpdateText}"
+                           Foreground="{StaticResource PrimaryForegroundBrush}"
+                           Margin="0,6,0,0" />
+            </StackPanel>
+
+            <!-- Top area: left device schematic + right recipe panel -->
+            <Grid Grid.Row="1" Margin="4,0,4,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="300" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 顶部设备示意图：Border/Canvas 占位画简化设备框图，标注 OP10 设备 -->
+                <Border Grid.Column="0" Style="{StaticResource DeviceBoxStyle}" Margin="0,0,8,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="设备示意" Style="{StaticResource CardTitleStyle}" Margin="0,0,0,8" />
+                        <Border Grid.Row="1" Background="#F2F4F7" CornerRadius="6" BorderBrush="#CBD4E0" BorderThickness="1" Padding="8">
+                            <!-- 简化设备框图：Canvas 占位 -->
+                            <Canvas Height="180" Background="Transparent">
+                                <!-- 外框：OP10 设备主体 -->
+                                <Border Canvas.Left="20" Canvas.Top="20" Width="380" Height="120"
+                                        BorderBrush="#2B3A49" BorderThickness="2" CornerRadius="4" Background="White" />
+                                <!-- 内部传送带示意 -->
+                                <Rectangle Canvas.Left="40" Canvas.Top="70" Width="340" Height="14"
+                                           Fill="#8AA0B8" RadiusX="3" RadiusY="3" />
+                                <!-- 两侧挡停/气缸示意 -->
+                                <Rectangle Canvas.Left="80" Canvas.Top="40" Width="24" Height="36" Fill="#5A738E" RadiusX="2" RadiusY="2" />
+                                <Rectangle Canvas.Left="300" Canvas.Top="40" Width="24" Height="36" Fill="#5A738E" RadiusX="2" RadiusY="2" />
+                                <!-- 传感器指示 -->
+                                <Ellipse Canvas.Left="120" Canvas.Top="90" Width="10" Height="10" Fill="#F9A825" />
+                                <Ellipse Canvas.Left="260" Canvas.Top="90" Width="10" Height="10" Fill="#F9A825" />
+                                <!-- OP10 设备标注 -->
+                                <TextBlock Canvas.Left="150" Canvas.Top="100" Text="OP10 设备" FontSize="13" FontWeight="SemiBold" Foreground="#20303F" />
+                                <!-- 顶部文字 -->
+                                <TextBlock Canvas.Left="140" Canvas.Top="28" Text="天板气缸" FontSize="10" Foreground="#7A8694" />
+                                <TextBlock Canvas.Left="60" Canvas.Top="145" Text="进料 →" FontSize="10" Foreground="#7A8694" />
+                                <TextBlock Canvas.Left="320" Canvas.Top="145" Text="→ 出料" FontSize="10" Foreground="#7A8694" />
+                                <!-- 底部状态 -->
+                                <TextBlock Canvas.Left="12" Canvas.Top="160" Text="* 示意图占位，Canvas 绘制简化设备框图" FontSize="10" Foreground="#9AA8B8" />
+                            </Canvas>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- 右侧配方显示 -->
+                <Border Grid.Column="1" Style="{StaticResource DeviceBoxStyle}">
+                    <StackPanel>
+                        <TextBlock Text="配方信息" Style="{StaticResource CardTitleStyle}" Margin="0,0,0,8" />
+                        <TextBlock Text="配方号" Style="{StaticResource CardTitleStyle}" />
+                        <ComboBox Margin="0,4,0,12"
+                                  ItemsSource="{Binding AvailableRecipes}"
+                                  SelectedItem="{Binding SelectedRecipe, Mode=TwoWay}"
+                                  FontSize="13"
+                                  Padding="6,4" />
+                        <!-- 下拉占位 2：显示可用配方数为 2 -->
+                        <TextBlock Text="* 下拉占位：共 2 个配方" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" Margin="0,-8,0,8" />
+
+                        <TextBlock Text="ICT机种" Style="{StaticResource CardTitleStyle}" />
+                        <ComboBox Margin="0,4,0,0"
+                                  ItemsSource="{Binding AvailableIctModels}"
+                                  SelectedItem="{Binding SelectedIctModel, Mode=TwoWay}"
+                                  FontSize="13"
+                                  Padding="6,4" />
+                        <TextBlock Text="* 下拉占位：518SII" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" Margin="0,4,0,8" />
+
+                        <Border Background="#F2F4F7" CornerRadius="4" Padding="8" Margin="0,8,0,0">
+                            <StackPanel>
+                                <TextBlock Text="当前选择" Style="{StaticResource CardTitleStyle}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <TextBlock Text="配方：" Style="{StaticResource CardTitleStyle}" />
+                                    <TextBlock Text="{Binding SelectedRecipe}" Foreground="{StaticResource PrimaryForegroundBrush}" FontSize="13" FontWeight="SemiBold" />
+                                    <TextBlock Text="  ICT：" Style="{StaticResource CardTitleStyle}" Margin="12,0,0,0" />
+                                    <TextBlock Text="{Binding SelectedIctModel}" Foreground="{StaticResource PrimaryForegroundBrush}" FontSize="13" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- 下方流程区 -->
+            <Border Grid.Row="2" Style="{StaticResource DeviceBoxStyle}" Margin="4,0,4,8">
+                <StackPanel>
+                    <TextBlock Text="流程区" Style="{StaticResource SectionLabelStyle}" Margin="0,0,0,4" />
+
+                    <!-- 自动流程 Step160：电机反转（绑定 D120 步骤+步骤文本映射） -->
+                    <Border Style="{StaticResource FlowRowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="自动流程" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Step" Style="{StaticResource CardTitleStyle}" Margin="0,0,2,0" />
+                                <TextBlock Text="{Binding AutoStepNumber}" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" />
+                                <TextBlock Text="：" Style="{StaticResource CardTitleStyle}" Margin="0,0,2,0" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Text="{Binding AutoStepText}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{StaticResource PrimaryForegroundBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding AutoStepNumber}" Value="160">
+                                                <Setter Property="Foreground" Value="{StaticResource StatusOkBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding AutoStepNumber}" Value="0">
+                                                <Setter Property="Foreground" Value="{StaticResource StatusNeutralBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+                    <TextBlock Text="* 自动流程绑定 D120：160=电机反转，其余按映射显示步骤文本" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" Margin="8,0,0,4" />
+
+                    <!-- 初始化流程 Step0：等待初始化启动 -->
+                    <Border Style="{StaticResource FlowRowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="初始化流程" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Step0" Style="{StaticResource CardTitleStyle}" Margin="0,0,2,0" />
+                                <TextBlock Text="：" Style="{StaticResource CardTitleStyle}" Margin="0,0,2,0" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Text="{Binding InitStepText}" FontSize="13" Foreground="{StaticResource PrimaryForegroundBrush}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+
+                    <!-- 预留行 -->
+                    <Border Style="{StaticResource FlowRowStyle}" Opacity="0.7">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="预留" FontSize="13" Foreground="{StaticResource MutedForegroundBrush}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="—" Style="{StaticResource CardTitleStyle}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="预留行（占位）" FontSize="13" Foreground="{StaticResource MutedForegroundBrush}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource FlowRowStyle}" Opacity="0.7">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="预留" FontSize="13" Foreground="{StaticResource MutedForegroundBrush}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="—" Style="{StaticResource CardTitleStyle}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="预留行（占位）" FontSize="13" Foreground="{StaticResource MutedForegroundBrush}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- 底部状态按钮行 -->
+            <Border Grid.Row="3" Style="{StaticResource DeviceBoxStyle}">
+                <StackPanel>
+                    <TextBlock Text="快捷导航" Style="{StaticResource SectionLabelStyle}" Margin="0,0,0,4" />
+                    <WrapPanel Orientation="Horizontal">
+                        <Button Content="I/O" Style="{StaticResource NavBottomButtonStyle}" Click="OnIoClicked" ToolTip="导航到 I/O 诊断" />
+                        <Button Content="自动条件" Style="{StaticResource NavBottomButtonStyle}" Click="OnAutoConditionClicked" ToolTip="导航到自动条件页（占位）" />
+                        <Button Content="诊断" Style="{StaticResource NavBottomButtonStyle}" Click="OnDiagnosticClicked" ToolTip="导航到诊断页" />
+                        <Button Content="工位视图" Style="{StaticResource NavBottomButtonStyle}" Click="OnStationViewClicked" ToolTip="导航到工位视图（占位）" />
+                        <Button Content="探针寿命" Style="{StaticResource NavBottomButtonStyle}" Click="OnProbeLifeClicked" ToolTip="导航到探针寿命（占位）" />
+                    </WrapPanel>
+                    <TextBlock Text="* 底部状态按钮行：I/O→IoDiagnosticsView，诊断→DiagnosticTerminal，其余为占位导航" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" Margin="4,6,0,0" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

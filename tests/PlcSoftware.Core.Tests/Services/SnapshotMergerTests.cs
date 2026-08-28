@@ -36,14 +36,16 @@ public class SnapshotMergerTests
         var snapshot = store.Current;
         Assert.NotNull(snapshot);
 
-        // Fast sub-keys are present in the merged snapshot.
-        Assert.Equal((ushort)0x0042, snapshot.Values["D101"]);
+        // Fast sub-keys are present in the merged snapshot (M0 via D100, fault code D110).
         Assert.Equal((ushort)0x0003, snapshot.Values["D110"]);
         Assert.True((bool)snapshot.Values["M0"]!);
 
-        // Process sub-keys are present in the same snapshot.
-        Assert.Equal((ushort)7, snapshot.Values["D200"]);
-        Assert.Equal(0xABCD1234u, (uint)snapshot.Values["D207.D208"]!);
+        // Process sub-keys are present in the same snapshot — heartbeat D140, step D120,
+        // width pulse D136 and production D138 (all single-word).
+        Assert.Equal((ushort)0x0042, snapshot.Values["D140"]);
+        Assert.Equal((ushort)7, snapshot.Values["D120"]);
+        Assert.Equal((ushort)0xABCD, snapshot.Values["D136"]);
+        Assert.Equal((ushort)0x1234, snapshot.Values["D138"]);
 
         // Published exactly once, and the delivered snapshot is the same immutable one now current.
         Assert.Single(published);
@@ -56,22 +58,22 @@ public class SnapshotMergerTests
         var store = new DeviceStateStore();
         var merger = new SnapshotMerger(store);
 
-        // Cycle 1: the fast block reports D101 and M0; the process block reports D200.
+        // Cycle 1: the fast block reports D140 and M0; the process block reports D120.
         merger.Publish(
-            new Dictionary<string, object?> { ["D101"] = (ushort)1, ["M0"] = true },
-            new Dictionary<string, object?> { ["D200"] = (ushort)7 },
+            new Dictionary<string, object?> { ["D140"] = (ushort)1, ["M0"] = true },
+            new Dictionary<string, object?> { ["D120"] = (ushort)7 },
             Timestamp);
 
-        // Cycle 2: M0 is no longer read, D101 and D200 change. The merge must start from a clean
+        // Cycle 2: M0 is no longer read, D140 and D120 change. The merge must start from a clean
         // dictionary each cycle — a stale M0 from cycle 1 must not survive.
         var second = merger.Publish(
-            new Dictionary<string, object?> { ["D101"] = (ushort)2 },
-            new Dictionary<string, object?> { ["D200"] = (ushort)8 },
+            new Dictionary<string, object?> { ["D140"] = (ushort)2 },
+            new Dictionary<string, object?> { ["D120"] = (ushort)8 },
             Timestamp);
 
         Assert.False(second.Values.ContainsKey("M0"));
-        Assert.Equal((ushort)2, second.Values["D101"]);
-        Assert.Equal((ushort)8, second.Values["D200"]);
+        Assert.Equal((ushort)2, second.Values["D140"]);
+        Assert.Equal((ushort)8, second.Values["D120"]);
     }
 
     [Fact]
@@ -84,9 +86,9 @@ public class SnapshotMergerTests
         var empty = new Dictionary<string, object?>();
 
         var first = merger.Publish(
-            new Dictionary<string, object?> { ["D101"] = (ushort)1 }, empty, Timestamp);
+            new Dictionary<string, object?> { ["D140"] = (ushort)1 }, empty, Timestamp);
         var second = merger.Publish(
-            new Dictionary<string, object?> { ["D101"] = (ushort)2 }, empty, Timestamp);
+            new Dictionary<string, object?> { ["D140"] = (ushort)2 }, empty, Timestamp);
 
         Assert.Equal(new[] { first, second }, published);
         Assert.Same(second, store.Current);
@@ -96,17 +98,17 @@ public class SnapshotMergerTests
     {
         var registers = new ushort[11];
         registers[0] = 0x0001;  // D100 bit0 → M0.
-        registers[1] = 0x0042;  // D101 heartbeat.
         registers[10] = 0x0003; // D110 fault code.
         return registers;
     }
 
     private static ushort[] ProcessRegisters()
     {
-        var registers = new ushort[14];
-        registers[0] = 7;       // D200 step number.
-        registers[7] = 0x1234;  // D207 low word.
-        registers[8] = 0xABCD;  // D208 high word.
+        var registers = new ushort[21];
+        registers[0] = 7;       // D120 step number.
+        registers[16] = 0xABCD; // D136 width pulse single.
+        registers[18] = 0x1234; // D138 production single.
+        registers[20] = 0x0042; // D140 heartbeat.
         return registers;
     }
 }

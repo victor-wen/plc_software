@@ -1,7 +1,7 @@
 namespace PlcSoftware.Core.Services;
 
 /// <summary>
-/// Health of the PLC heartbeat signal (D101) as tracked by <see cref="HeartbeatMonitor"/>.
+/// Health of the PLC heartbeat signal (D140) as tracked by <see cref="HeartbeatMonitor"/>.
 /// </summary>
 public enum HeartbeatStatus
 {
@@ -9,25 +9,25 @@ public enum HeartbeatStatus
     Unknown,
 
     /// <summary>
-    /// The PLC is answering: D101 keeps producing new (different) values within the timeout.
+    /// The PLC is answering: D140 keeps producing new (different) values within the timeout.
     /// </summary>
     Online,
 
     /// <summary>
-    /// D101 has held the same value for the whole timeout without a change, so the PLC is presumed
+    /// D140 has held the same value for the whole timeout without a change, so the PLC is presumed
     /// to have stopped advancing its heartbeat.
     /// </summary>
     Lost,
 }
 
 /// <summary>
-/// Tracks the PLC heartbeat counter (D101) and flags when it stops advancing.
+/// Tracks the PLC heartbeat counter (D140) and flags when it stops advancing.
 ///
-/// <para><b>Change rule.</b> The monitor does <em>not</em> require D101 to increment by exactly one.
+/// <para><b>Change rule.</b> The monitor does <em>not</em> require D140 to increment by exactly one.
 /// Any different value is a change, including the UInt16 wraparound edge (65535 → 0). This keeps the
 /// watchdog simple and robust: every new value, whatever it is, proves the PLC is alive.</para>
 ///
-/// <para><b>Timeout rule.</b> When the same D101 value has been observed unchanged for the configured
+/// <para><b>Timeout rule.</b> When the same D140 value has been observed unchanged for the configured
 /// timeout (3 s by default), the monitor transitions to <see cref="HeartbeatStatus.Lost"/> and raises
 /// <see cref="StatusChanged"/>. A later change (a different value) transitions it back to
 /// <see cref="HeartbeatStatus.Online"/>.</para>
@@ -62,7 +62,7 @@ public sealed class HeartbeatMonitor
     public event Action<HeartbeatStatus>? StatusChanged;
 
     /// <summary>
-    /// Feeds one D101 observation. A value different from the previous one is counted as a change
+    /// Feeds one D140 observation. A value different from the previous one is counted as a change
     /// (resuming online and resetting the loss timer); an identical value is counted as "no change"
     /// and, once it has persisted for the timeout, moves the device to
     /// <see cref="HeartbeatStatus.Lost"/>.

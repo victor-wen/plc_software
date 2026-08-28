@@ -1,0 +1,240 @@
+<UserControl x:Class="PlcSoftware.App.Views.FunctionSelectView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="4,12,4,4" />
+        </Style>
+        <Style x:Key="CardTitleStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style x:Key="GroupBoxStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="Margin" Value="4" />
+        </Style>
+        <!-- ToggleButton 蓝/灰样式：IsChecked=True 蓝底白字，False 灰底深字 -->
+        <Style x:Key="HmiToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="96" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Background" Value="#E4E7EB" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryForegroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="16"
+                                Padding="2">
+                            <Grid>
+                                <Ellipse x:Name="Knob" Width="26" Height="26" Fill="White" HorizontalAlignment="Left" Margin="2,0,0,0" />
+                                <TextBlock x:Name="Label" Text="关" FontSize="12" FontWeight="SemiBold" Foreground="{TemplateBinding Foreground}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" Margin="14,0,0,0" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#1E6FB8" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1E6FB8" />
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter TargetName="Label" Property="Text" Value="开" />
+                                <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Knob" Property="Margin" Value="0,0,2,0" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="False">
+                                <Setter TargetName="Label" Property="Text" Value="关" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.92" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SwitchRowStyle" TargetType="Border">
+            <Setter Property="Background" Value="#F7F8FA" />
+            <Setter Property="BorderBrush" Value="{StaticResource MutedForegroundBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="MinWidth" Value="240" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="4,0,4,8">
+                <TextBlock Text="功能选择" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" />
+                <TextBlock Text="连接：" Style="{StaticResource CardTitleStyle}" Margin="16,6,2,0" />
+                <TextBlock Text="{Binding ConnectionStatusText}" Margin="0,6,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource StatusAlertBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource StatusOkBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="切换时有地址的经 M 写入，其余为 UI 占位" Style="{StaticResource SectionLabelStyle}" Margin="24,6,0,0" />
+            </StackPanel>
+
+            <!-- 反馈行 -->
+            <TextBlock Grid.Row="1"
+                       Text="{Binding CommandFeedbackText}"
+                       Style="{StaticResource SectionLabelStyle}"
+                       Margin="4,0,4,8"
+                       Foreground="{StaticResource StatusNeutralBrush}"
+                       TextWrapping="Wrap" />
+
+            <!-- 开关网格 4x2 -->
+            <Border Grid.Row="2" Style="{StaticResource GroupBoxStyle}">
+                <StackPanel>
+                    <TextBlock Text="开关" Style="{StaticResource SectionLabelStyle}" Margin="4,0,4,8" />
+                    <WrapPanel Orientation="Horizontal">
+                        <!-- 直通模式 M105 -->
+                        <Border Style="{StaticResource SwitchRowStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="直通模式" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" />
+                                    <TextBlock Text="M105 写入" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource HmiToggleStyle}" IsChecked="{Binding IsBypassMode, Mode=TwoWay}" ToolTip="M105 直通模式" />
+                            </Grid>
+                        </Border>
+                        <!-- 离线模式 占位 -->
+                        <Border Style="{StaticResource SwitchRowStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="离线模式" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" />
+                                    <TextBlock Text="UI占位" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource HmiToggleStyle}" IsChecked="{Binding IsOfflineMode, Mode=TwoWay}" ToolTip="UI占位，未写入PLC" />
+                            </Grid>
+                        </Border>
+                        <!-- 机台照明 占位 -->
+                        <Border Style="{StaticResource SwitchRowStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="机台照明" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" />
+                                    <TextBlock Text="UI占位" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource HmiToggleStyle}" IsChecked="{Binding IsMachineLightOn, Mode=TwoWay}" ToolTip="UI占位，未写入PLC" />
+                            </Grid>
+                        </Border>
+                        <!-- 扫码枪屏蔽 占位 -->
+                        <Border Style="{StaticResource SwitchRowStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="扫码枪屏蔽" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" />
+                                    <TextBlock Text="UI占位" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource HmiToggleStyle}" IsChecked="{Binding IsScannerBypass, Mode=TwoWay}" ToolTip="UI占位，未写入PLC" />
+                            </Grid>
+                        </Border>
+                        <!-- 蜂鸣器屏蔽 占位 -->
+                        <Border Style="{StaticResource SwitchRowStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="蜂鸣器屏蔽" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" />
+                                    <TextBlock Text="UI占位" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource HmiToggleStyle}" IsChecked="{Binding IsBuzzerBypass, Mode=TwoWay}" ToolTip="UI占位，未写入PLC" />
+                            </Grid>
+                        </Border>
+                        <!-- 安全门屏蔽 M111 -->
+                        <Border Style="{StaticResource SwitchRowStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="安全门屏蔽" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" />
+                                    <TextBlock Text="M111 写入" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource HmiToggleStyle}" IsChecked="{Binding IsDoorBypass, Mode=TwoWay}" ToolTip="M111 门磁屏蔽" />
+                            </Grid>
+                        </Border>
+                        <!-- 光栅屏蔽 M110 -->
+                        <Border Style="{StaticResource SwitchRowStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="光栅屏蔽" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" />
+                                    <TextBlock Text="M110 写入" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource HmiToggleStyle}" IsChecked="{Binding IsLightCurtainBypass, Mode=TwoWay}" ToolTip="M110 光栅屏蔽" />
+                            </Grid>
+                        </Border>
+                        <!-- 初始化重置 占位 -->
+                        <Border Style="{StaticResource SwitchRowStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="初始化重置" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource PrimaryForegroundBrush}" />
+                                    <TextBlock Text="UI占位" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource HmiToggleStyle}" IsChecked="{Binding IsInitReset, Mode=TwoWay}" ToolTip="UI占位，未写入PLC" />
+                            </Grid>
+                        </Border>
+                    </WrapPanel>
+                    <TextBlock Text="* 蓝=开 / 灰=关；有地址的切换时经 ICommandService 写入 M105/110/111，其余为UI占位不写PLC" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" Margin="4,8,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

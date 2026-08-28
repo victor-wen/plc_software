@@ -33,7 +33,7 @@ public sealed class EndToEndSimulationTests
         var store = new DeviceStateStore();
         var merger = new SnapshotMerger(store);
 
-        // Simulator: steps 0..5, one second each, D101 heartbeat increments each second, no faults.
+        // Simulator: steps 0..5, one second each, D140 heartbeat increments each second, no faults.
         var events = new List<SimulationEvent>();
         for (var step = 0; step <= 5; step++)
         {
@@ -47,8 +47,8 @@ public sealed class EndToEndSimulationTests
 
         await queued.ConnectAsync(CancellationToken.None);
 
-        // Poll the fast group D100-D110 (protocol offset 0..10) + process group D200-D213 (100..113)
-        // through the queue, as the production PollingPlan does.
+        // Poll the fast group D100-D110 (protocol offset 0..10) + process group D120-D140 (20..40)
+        // + params group D204-D220 (104..120) through the queue, as the production PollingPlan does.
         var now = DateTime.UtcNow;
         DeviceSnapshot last = store.Current;
 
@@ -58,18 +58,27 @@ public sealed class EndToEndSimulationTests
             runner.Advance(TimeSpan.FromSeconds(1));
 
             var fastValues = await queued.ReadHoldingRegistersAsync(1, 0, 11, CancellationToken.None);
-            var processValues = await queued.ReadHoldingRegistersAsync(1, 100, 14, CancellationToken.None);
+            var processValues = await queued.ReadHoldingRegistersAsync(1, 20, 21, CancellationToken.None);
+            var paramsValues = await queued.ReadHoldingRegistersAsync(1, 104, 17, CancellationToken.None);
 
             var fast = RegisterDecoder.DecodeFast(fastValues);
             var process = RegisterDecoder.DecodeProcess(processValues);
-            last = merger.Publish(fast, process, now.AddSeconds(t));
+            var decodedParams = RegisterDecoder.DecodeParams(paramsValues);
+            var mergedProcess = new Dictionary<string, object?>(process);
+            foreach (var kv in decodedParams)
+            {
+                mergedProcess[kv.Key] = kv.Value;
+            }
+
+            last = merger.Publish(fast, mergedProcess, now.AddSeconds(t));
         }
 
-        // Step 0..5 transitions were driven; D200 holds the latest step (5 staying until end, then 0 at t=6?).
-        Assert.True(last.Values.ContainsKey("D200"));
+        // Step 0..5 transitions were driven; D120 holds the latest step (5 staying until end, then 0 at t=6?).
+        Assert.True(last.Values.ContainsKey("D120"));
         Assert.True(last.Values.ContainsKey("M200"));
+        Assert.True(last.Values.ContainsKey("D140"));
 
-        // Heartbeat: D101 changed every second, so the monitor must stay Online even past 3 seconds.
+        // Heartbeat: D140 changed every second, so the monitor must stay Online even past 3 seconds.
         var heartbeat = new HeartbeatMonitor(timeout: TimeSpan.FromSeconds(3));
         heartbeat.Observe(0);
         for (var i = 1; i <= 5; i++)

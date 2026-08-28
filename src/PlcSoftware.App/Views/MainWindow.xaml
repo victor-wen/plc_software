@@ -5,82 +5,369 @@
         MinWidth="1280"
         MinHeight="720"
         WindowState="Maximized"
-        WindowStartupLocation="CenterScreen">
-    <Grid>
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource ConfigUiBackgroundBrush}">
+    <Window.Resources>
+        <Style x:Key="HmiHeaderBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource ConfigUiHeaderBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ConfigUiAccentBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+        </Style>
+        <Style x:Key="HmiLeftNavButtonStyle" TargetType="Button" BasedOn="{StaticResource ConfigUiModuleButtonStyle}">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="12,9"/>
+            <Setter Property="Margin" Value="0,3"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        <Style x:Key="HmiLeftNavSelectedStyle" TargetType="Button" BasedOn="{StaticResource ConfigUiModuleButtonStyle}">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="12,9"/>
+            <Setter Property="Margin" Value="0,3"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Background" Value="{StaticResource ConfigUiAccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ConfigUiAccentBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style x:Key="HmiCommandButtonStyle" TargetType="Button" BasedOn="{StaticResource ConfigUiModuleButtonStyle}">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Width" Value="92"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Margin" Value="0,4"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="HmiStopButtonStyle" TargetType="Button" BasedOn="{StaticResource HmiCommandButtonStyle}">
+            <Setter Property="Background" Value="#C62828"/>
+            <Setter Property="BorderBrush" Value="#E53935"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style x:Key="HmiBottomTabStyle" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource ConfigUiHeaderBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ConfigUiGridLineBrush}"/>
+            <Setter Property="BorderThickness" Value="0,1,1,0"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="MinWidth" Value="92"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#1A4A73"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource ConfigUiAccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="HmiBottomTabSelectedStyle" TargetType="Button" BasedOn="{StaticResource HmiBottomTabStyle}">
+            <Setter Property="Background" Value="{StaticResource ConfigUiButtonBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ConfigUiAccentBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+    </Window.Resources>
+    <Grid Background="{StaticResource ConfigUiBackgroundBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Navigation bar (placeholder for later page navigation). -->
-        <Border Grid.Row="0" Style="{StaticResource NavBarStyle}">
-            <StackPanel Orientation="Horizontal" x:Name="NavButtonsPanel">
-                <TextBlock Text="PLC 上位机监控系统"
-                           Style="{StaticResource StatusTextStyle}"
-                           FontWeight="SemiBold"
-                           Margin="8,0,16,0" />
-                <Button Content="总览" Style="{StaticResource NavButtonStyle}" Click="OnOverviewClicked" />
-                <Button Content="操作" Style="{StaticResource NavButtonStyle}" Click="OnOperationClicked" />
-                <Button Content="手动" Style="{StaticResource NavButtonStyle}" Click="OnManualClicked" />
-                <Button Content="参数" Style="{StaticResource NavButtonStyle}" Click="OnParametersClicked" />
-                <Button Content="I/O 诊断" Style="{StaticResource NavButtonStyle}" Click="OnIoDiagnosticsClicked" />
-                <Button Content="调试终端" Style="{StaticResource NavButtonStyle}" Click="OnDiagnosticTerminalClicked" />
-                <Button Content="通信设置" Style="{StaticResource NavButtonStyle}" Click="OnConnectionSettingsClicked" />
-                <Button Content="报警与历史" Style="{StaticResource NavButtonStyle}" Click="OnHistoryClicked" />
-                <!-- Configurable pages (design §7) are appended here at startup when config/ui-layout.json exists. -->
-                <StackPanel Orientation="Horizontal" x:Name="ConfigNavItems"/>
-                <StackPanel Orientation="Horizontal" x:Name="SignInPanel" Margin="24,0,8,0">
-                    <TextBlock x:Name="SignedInText"
-                               Style="{StaticResource StatusTextStyle}"
-                               VerticalAlignment="Center"
-                               Margin="0,0,8,0" />
-                    <Button x:Name="SignOutButton"
-                            Content="退出登录"
-                            Style="{StaticResource NavButtonStyle}"
-                            Click="OnSignOutClicked"
-                            Visibility="Collapsed" />
+        <!-- Row 0: Header 区 (蓝绿 Logo + OP10, 中间报警/离线标题, 右侧注销 + 心跳 + 日期时间) -->
+        <Border Grid.Row="0" Style="{StaticResource HmiHeaderBorderStyle}" Padding="0">
+            <Grid Height="54">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- 左侧蓝绿 Logo + OP10 -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <Border Background="#00BFA5" CornerRadius="4" Padding="10,4" VerticalAlignment="Center" Margin="0,0,8,0">
+                        <TextBlock Text="VISA" Foreground="White" FontWeight="Bold" FontSize="15" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="OP10" Foreground="{StaticResource ConfigUiAccentBrush}" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <Border Width="1" Height="22" Background="{StaticResource ConfigUiGridLineBrush}" Opacity="0.6" VerticalAlignment="Center" Margin="6,0,12,0"/>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="PLC 上位机监控系统" Foreground="{StaticResource ConfigUiTextBrush}" FontSize="13" FontWeight="SemiBold"/>
+                        <TextBlock Text="HMI · 威纶通风格" Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="10" Opacity="0.85"/>
+                    </StackPanel>
                 </StackPanel>
-            </StackPanel>
+
+                <!-- 中间标题：绑定 FaultText / 离线模式文本 / 默认标题 -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12,0">
+                    <!-- 有故障时显示 FaultText (红) -->
+                    <TextBlock Text="{Binding FaultText}" Foreground="#FF8A8A" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" MaxWidth="520"
+                               Visibility="{Binding HasFault, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    <!-- 离线/连接中等离线模式文本 (黄) - 仅无故障且非在线时显示 -->
+                    <TextBlock Foreground="#FFE000" FontSize="13" VerticalAlignment="Center" Margin="0,0,10,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasFault}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding HasFault}" Value="False"/>
+                                            <Condition Binding="{Binding ConnectionState}" Value="Disconnected"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Setter Property="Text" Value="离线模式"/>
+                                    </MultiDataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding HasFault}" Value="False"/>
+                                            <Condition Binding="{Binding ConnectionState}" Value="HeartbeatLost"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Setter Property="Text" Value="心跳丢失 · 离线模式"/>
+                                    </MultiDataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding HasFault}" Value="False"/>
+                                            <Condition Binding="{Binding ConnectionState}" Value="Reconnecting"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Setter Property="Text" Value="重连中 · 离线模式"/>
+                                    </MultiDataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding HasFault}" Value="False"/>
+                                            <Condition Binding="{Binding ConnectionState}" Value="Connecting"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Setter Property="Text" Value="连接中"/>
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <!-- 在线且无故障时的默认标题 -->
+                    <TextBlock Text="自动化设备 · 运行监控" Foreground="{StaticResource ConfigUiTextBrush}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Opacity="0.95">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasFault}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ConnectionState}" Value="Disconnected">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ConnectionState}" Value="HeartbeatLost">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ConnectionState}" Value="Reconnecting">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ConnectionState}" Value="Connecting">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- 右侧：心跳绿/黄灯 + 日期时间 + 注销红按钮 -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <Ellipse Width="12" Height="12" Margin="0,0,6,0" Stroke="{StaticResource ConfigUiGridLineBrush}" StrokeThickness="1" VerticalAlignment="Center">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="#7A8694"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Heartbeat}" Value="Online">
+                                        <Setter Property="Fill" Value="#00C853"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Heartbeat}" Value="Lost">
+                                        <Setter Property="Fill" Value="#FFCC00"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ConnectionState}" Value="Online">
+                                        <Setter Property="Fill" Value="#00C853"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ConnectionState}" Value="HeartbeatLost">
+                                        <Setter Property="Fill" Value="#FFCC00"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="{Binding HeartbeatText}" Foreground="{StaticResource ConfigUiTextBrush}" FontSize="11" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ConnectionStatusText}" Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="10" VerticalAlignment="Center" Opacity="0.9"/>
+                    </StackPanel>
+                    <Border Width="1" Height="28" Background="{StaticResource ConfigUiGridLineBrush}" Opacity="0.5" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="ClockText" Foreground="{StaticResource ConfigUiTextBrush}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" FontFamily="Consolas"/>
+                        <TextBlock x:Name="SignedInText" Foreground="{StaticResource ConfigUiMutedTextBrush}" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="11"/>
+                        <Button x:Name="SignOutButton" Content="注销当前账户" Visibility="Collapsed" Click="OnSignOutClicked"
+                                Background="#C62828" Foreground="White" BorderBrush="#E53935" BorderThickness="1" Padding="12,6" FontSize="12" FontWeight="SemiBold" Cursor="Hand" MinWidth="0">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#E53935"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </StackPanel>
+                    <!-- 兼容旧逻辑：保留但隐藏 (SetupConfigurablePages / UpdateGateUi 仍访问) -->
+                    <StackPanel x:Name="ConfigNavItems" Orientation="Horizontal" Visibility="Collapsed"/>
+                    <!-- 旧顶栏按钮容器（仅供 UpdateGateUi 枚举 Button，实际隐藏） -->
+                    <StackPanel x:Name="NavButtonsPanel" Orientation="Horizontal" Visibility="Collapsed">
+                        <TextBlock Text="PLC 上位机监控系统" Visibility="Collapsed"/>
+                        <Button Content="总览" Visibility="Collapsed" Click="OnOverviewClicked"/>
+                        <Button Content="操作" Visibility="Collapsed" Click="OnOperationClicked"/>
+                        <Button Content="手动" Visibility="Collapsed" Click="OnManualClicked"/>
+                        <Button Content="参数" Visibility="Collapsed" Click="OnParametersClicked"/>
+                        <Button Content="I/O 诊断" Visibility="Collapsed" Click="OnIoDiagnosticsClicked"/>
+                        <Button Content="调试终端" Visibility="Collapsed" Click="OnDiagnosticTerminalClicked"/>
+                        <Button Content="通信设置" Visibility="Collapsed" Click="OnConnectionSettingsClicked"/>
+                        <Button Content="报警与历史" Visibility="Collapsed" Click="OnHistoryClicked"/>
+                        <!-- 新增 HMI 页面也以隐藏按钮形式保留，便于旧 UpdateGateUi 遍历 -->
+                        <Button Content="主页" Visibility="Collapsed" Click="OnHomeClicked"/>
+                        <Button Content="功能选择" Visibility="Collapsed" Click="OnFunctionSelectClicked"/>
+                        <Button Content="气缸控制" Visibility="Collapsed" Click="OnCylinderControlClicked"/>
+                        <StackPanel x:Name="SignInPanel" Visibility="Collapsed"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
         </Border>
 
-        <!-- Alarm banner skeleton; hidden unless a fault is active. -->
-        <Border Grid.Row="1"
-                Style="{StaticResource AlarmBannerStyle}"
-                Visibility="{Binding HasFault, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="故障："
-                           Foreground="{StaticResource InverseForegroundBrush}"
-                           FontWeight="Bold"
-                           FontSize="14" />
-                <TextBlock Text="{Binding FaultText}"
-                           Foreground="{StaticResource InverseForegroundBrush}"
-                           FontSize="14" />
-            </StackPanel>
+        <!-- 第二行黄色警告条: 08:47:51 三级警告: DB400... (绑定 FaultText/WarningText + 实时时钟) -->
+        <Border Grid.Row="1" Background="#FFE000" BorderBrush="#E6C800" BorderThickness="0,1" Padding="12,7">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="⚠" Foreground="#1A1A1A" FontSize="14" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBlock x:Name="WarningClockText" Foreground="#1A1A1A" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" FontFamily="Consolas" Margin="0,0,10,0"/>
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding WarningDisplayText}" Foreground="#1A1A1A" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+            </Grid>
         </Border>
 
-        <!-- Page host: later pages are navigated into this content region. -->
-        <ContentControl x:Name="PageHost"
-                        Grid.Row="2"
-                        Style="{StaticResource PageHostStyle}" />
+        <!-- 中间主区域: 左侧垂直导航 + 中央 PageHost + 右侧竖排命令列 -->
+        <Grid Grid.Row="2" Background="{StaticResource ConfigUiBackgroundBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="140"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="110"/>
+            </Grid.ColumnDefinitions>
 
-        <!-- Global status bar (design §6.1). -->
-        <Border Grid.Row="3" Style="{StaticResource StatusBarStyle}">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="串口" Style="{StaticResource StatusLabelStyle}" />
-                <TextBlock Text="{Binding ConnectionStatusText}" Style="{StaticResource StatusTextStyle}" />
-                <TextBlock Text="心跳" Style="{StaticResource StatusLabelStyle}" />
-                <TextBlock Text="{Binding HeartbeatText}" Style="{StaticResource StatusTextStyle}" />
-                <TextBlock Text="模式" Style="{StaticResource StatusLabelStyle}" />
-                <TextBlock Text="{Binding ModeText}" Style="{StaticResource StatusTextStyle}" />
-                <TextBlock Text="运行" Style="{StaticResource StatusLabelStyle}" />
-                <TextBlock Text="{Binding RunText}" Style="{StaticResource StatusTextStyle}" />
-                <TextBlock Text="屏蔽" Style="{StaticResource StatusLabelStyle}" />
-                <TextBlock Text="{Binding MaskText}" Style="{StaticResource StatusTextStyle}" />
-                <TextBlock Text="当前时间" Style="{StaticResource StatusLabelStyle}" />
-                <TextBlock x:Name="ClockText" Style="{StaticResource StatusTextStyle}" />
-            </StackPanel>
+            <!-- 左侧垂直导航栏 (宽约 140) -->
+            <Border Grid.Column="0" Background="{StaticResource ConfigUiHeaderBrush}" BorderBrush="{StaticResource ConfigUiGridLineBrush}" BorderThickness="0,0,1,0" Padding="8,10">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="LeftNavPanel" VerticalAlignment="Top">
+                        <Button Content="主页面" Style="{StaticResource HmiLeftNavButtonStyle}" Click="OnLeftNavItemClicked" Tag="home"/>
+                        <Button Content="报警总页面" Style="{StaticResource HmiLeftNavButtonStyle}" Click="OnLeftNavItemClicked" Tag="alarm-overview"/>
+                        <Button Content="操作记录" Style="{StaticResource HmiLeftNavButtonStyle}" Click="OnLeftNavItemClicked" Tag="operation-record"/>
+                        <Button Content="气缸控制" Style="{StaticResource HmiLeftNavButtonStyle}" Click="OnLeftNavItemClicked" Tag="cylinder-control"/>
+                        <Button Content="电机控制" Style="{StaticResource HmiLeftNavButtonStyle}" Click="OnLeftNavItemClicked" Tag="motor-control"/>
+                        <Button Content="功能选择" Style="{StaticResource HmiLeftNavButtonStyle}" Click="OnLeftNavItemClicked" Tag="function-select"/>
+                        <Border Height="1" Background="{StaticResource ConfigUiGridLineBrush}" Opacity="0.35" Margin="0,10,0,8"/>
+                        <TextBlock Text="页面导航" Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="10" Opacity="0.85" Margin="4,0,0,4"/>
+                        <!-- 可配置页补充容器（由 SetupConfigurablePages 动态追加） -->
+                        <StackPanel x:Name="LeftNavConfigContainer" Orientation="Vertical"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- 中央页面宿主 -->
+            <Border Grid.Column="1" Background="{StaticResource ConfigUiBackgroundBrush}" Padding="0">
+                <ContentControl x:Name="PageHost" Style="{StaticResource PageHostStyle}" Background="{StaticResource ConfigUiBackgroundBrush}"/>
+            </Border>
+
+            <!-- 右侧垂直命令列 (手动/自动/启动/停止红/复位/初始化) -->
+            <Border Grid.Column="2" Background="{StaticResource ConfigUiHeaderBrush}" BorderBrush="{StaticResource ConfigUiGridLineBrush}" BorderThickness="1,0,0,0" Padding="8,10">
+                <StackPanel x:Name="RightCommandPanel" VerticalAlignment="Top" HorizontalAlignment="Center">
+                    <TextBlock Text="命令" Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="10" HorizontalAlignment="Center" Margin="0,0,0,8" Opacity="0.9"/>
+                    <Button x:Name="CmdManualButton" Content="手动" Style="{StaticResource HmiCommandButtonStyle}" Click="OnRightManualClicked" ToolTip="手动模式 M104=0 M105=0" IsEnabled="{Binding IsOnline}"/>
+                    <Button x:Name="CmdAutoButton" Content="自动" Style="{StaticResource HmiCommandButtonStyle}" Click="OnRightAutoClicked" ToolTip="自动模式 M104=1 M105=0" IsEnabled="{Binding IsOnline}"/>
+                    <Button x:Name="CmdStartButton" Content="启动" Style="{StaticResource HmiCommandButtonStyle}" Click="OnRightStartClicked" ToolTip="启动 M101 脉冲" IsEnabled="{Binding IsOnline}"/>
+                    <Button x:Name="CmdStopButton" Content="停止" Style="{StaticResource HmiStopButtonStyle}" Click="OnRightStopClicked" ToolTip="停止 M102 脉冲" IsEnabled="{Binding IsOnline}"/>
+                    <Button x:Name="CmdResetButton" Content="复位" Style="{StaticResource HmiCommandButtonStyle}" Click="OnRightResetClicked" ToolTip="复位 M103 脉冲" IsEnabled="{Binding IsOnline}"/>
+                    <Button x:Name="CmdInitButton" Content="初始化" Style="{StaticResource HmiCommandButtonStyle}" Click="OnRightInitClicked" ToolTip="初始化 M103 脉冲" IsEnabled="{Binding IsOnline}"/>
+                    <Border Height="1" Background="{StaticResource ConfigUiGridLineBrush}" Opacity="0.35" Margin="0,12,0,10"/>
+                    <TextBlock Text="状态" Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="10" HorizontalAlignment="Center" Margin="0,0,0,4" Opacity="0.9"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,4">
+                        <Ellipse Width="8" Height="8" Margin="0,0,4,0" VerticalAlignment="Center">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Fill" Value="#7A8694"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ConnectionState}" Value="Online">
+                                            <Setter Property="Fill" Value="#00C853"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <TextBlock Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="10" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="离线"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ConnectionState}" Value="Online">
+                                            <Setter Property="Text" Value="在线"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                    <TextBlock Text="{Binding RunText}" Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="10" HorizontalAlignment="Center" Opacity="0.9"/>
+                    <TextBlock Text="{Binding ModeText}" Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="10" HorizontalAlignment="Center" Opacity="0.8" Margin="0,2,0,0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- 底部 tab 行 (报警/前后交互/离线设置/延时处理/I-O/自动条件/诊断/工位视图/探针寿命) -->
+        <Border Grid.Row="3" Background="{StaticResource ConfigUiHeaderBrush}" BorderBrush="{StaticResource ConfigUiAccentBrush}" BorderThickness="0,1,0,0" Padding="0">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Padding="0">
+                <StackPanel x:Name="BottomTabPanel" Orientation="Horizontal">
+                    <Button Content="报警" Style="{StaticResource HmiBottomTabStyle}" Click="OnBottomTabClicked" Tag="alarm"/>
+                    <Button Content="前后交互" Style="{StaticResource HmiBottomTabStyle}" Click="OnBottomTabClicked" Tag="front-back"/>
+                    <Button Content="离线设置" Style="{StaticResource HmiBottomTabStyle}" Click="OnBottomTabClicked" Tag="offline-set"/>
+                    <Button Content="延时处理" Style="{StaticResource HmiBottomTabStyle}" Click="OnBottomTabClicked" Tag="delay"/>
+                    <Button Content="I-O" Style="{StaticResource HmiBottomTabStyle}" Click="OnBottomTabClicked" Tag="io-diagnostics"/>
+                    <Button Content="自动条件" Style="{StaticResource HmiBottomTabStyle}" Click="OnBottomTabClicked" Tag="auto-cond"/>
+                    <Button Content="诊断" Style="{StaticResource HmiBottomTabStyle}" Click="OnBottomTabClicked" Tag="diagnostic-terminal"/>
+                    <Button Content="工位视图" Style="{StaticResource HmiBottomTabStyle}" Click="OnBottomTabClicked" Tag="station-view"/>
+                    <Button Content="探针寿命" Style="{StaticResource HmiBottomTabStyle}" Click="OnBottomTabClicked" Tag="probe-life"/>
+                </StackPanel>
+            </ScrollViewer>
         </Border>
     </Grid>
 </Window>

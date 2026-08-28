@@ -19,16 +19,17 @@ public class JsonConfigurationLoaderTests
 
     private static readonly string[] GivenPointAddresses =
     {
-        // X inputs
+        // X inputs (24 points: X0-X27 octal, protocol 0..23)
         "X0", "X1", "X2", "X3", "X4", "X5", "X6", "X7",
         "X10", "X11", "X12", "X13", "X14", "X15", "X16", "X17",
-        "X20", "X21", "X22",
-        // Y outputs
+        "X20", "X21", "X22", "X23", "X24", "X25", "X26", "X27",
+        // Y outputs (24 points: Y0-Y27 octal, protocol 0..23)
         "Y0", "Y1", "Y2", "Y3", "Y4", "Y5", "Y6", "Y7",
-        "Y10", "Y11", "Y12", "Y13", "Y14", "Y15",
-        // D registers
-        "D100", "D101", "D102", "D103", "D104", "D105.bit0", "D106", "D110",
-        "D200", "D201", "D202", "D203", "D204", "D205", "D207", "D208", "D210", "D212", "D213",
+        "Y10", "Y11", "Y12", "Y13", "Y14", "Y15", "Y16", "Y17",
+        "Y20", "Y21", "Y22", "Y23", "Y24", "Y25", "Y26", "Y27",
+        // D registers — new mapping: Fast D100-D110, Process D120-D140, Params D204-D220
+        "D100", "D140", "D102", "D103", "D104", "D105", "D106", "D110",
+        "D120", "D122", "D124", "D126", "D128", "D130", "D136", "D138", "D204", "D210", "D220",
         // M command points (host-written)
         "M100", "M101", "M102", "M103", "M104", "M105", "M106", "M107", "M108", "M109", "M110", "M111",
         // M status points
@@ -159,18 +160,27 @@ public class JsonConfigurationLoaderTests
         var points = _loader.LoadPointMap(ConfigPath("point-map.simulation.json"));
         var byAddress = points.ToDictionary(p => p.Address, StringComparer.OrdinalIgnoreCase);
 
-        // D registers: protocol offset = logical number relative to their block base (D100-D110
-        // fast block, D200-D213 process block).
+        // D registers: protocol offset = D number - 100 (0-based).
+        // Fast: D100-D110 (0..10), Process: D120-D140 (20..40), Params: D204-D220 (104..120).
         Assert.Equal(0, byAddress["D100"].ProtocolAddress);
-        Assert.Equal(1, byAddress["D101"].ProtocolAddress);
-        Assert.Equal(5, byAddress["D105.bit0"].ProtocolAddress);
+        Assert.Equal(40, byAddress["D140"].ProtocolAddress);
+        Assert.Equal(2, byAddress["D102"].ProtocolAddress);
+        Assert.Equal(3, byAddress["D103"].ProtocolAddress);
+        Assert.Equal(4, byAddress["D104"].ProtocolAddress);
+        Assert.Equal(5, byAddress["D105"].ProtocolAddress);
         Assert.Equal(6, byAddress["D106"].ProtocolAddress);
         Assert.Equal(10, byAddress["D110"].ProtocolAddress);
-        Assert.Equal(100, byAddress["D200"].ProtocolAddress);
-        Assert.Equal(105, byAddress["D205"].ProtocolAddress);
-        Assert.Equal(107, byAddress["D207"].ProtocolAddress);
-        Assert.Equal(112, byAddress["D212"].ProtocolAddress);
-        Assert.Equal(113, byAddress["D213"].ProtocolAddress);
+        Assert.Equal(20, byAddress["D120"].ProtocolAddress);
+        Assert.Equal(22, byAddress["D122"].ProtocolAddress);
+        Assert.Equal(24, byAddress["D124"].ProtocolAddress);
+        Assert.Equal(26, byAddress["D126"].ProtocolAddress);
+        Assert.Equal(28, byAddress["D128"].ProtocolAddress);
+        Assert.Equal(30, byAddress["D130"].ProtocolAddress);
+        Assert.Equal(36, byAddress["D136"].ProtocolAddress);
+        Assert.Equal(38, byAddress["D138"].ProtocolAddress);
+        Assert.Equal(104, byAddress["D204"].ProtocolAddress);
+        Assert.Equal(110, byAddress["D210"].ProtocolAddress);
+        Assert.Equal(120, byAddress["D220"].ProtocolAddress);
 
         // M relays: protocol address == logical number.
         Assert.Equal(0, byAddress["M0"].ProtocolAddress);
@@ -180,11 +190,15 @@ public class JsonConfigurationLoaderTests
         Assert.Equal(200, byAddress["M200"].ProtocolAddress);
         Assert.Equal(316, byAddress["M316"].ProtocolAddress);
 
-        // X/Y are octal-numbered in H3U: logical X10 = protocol 8, X20 = 16, X22 = 18; Y likewise.
+        // X/Y are octal-numbered in H3U: logical X10 = protocol 8, X20 = 16, X27 = 23; Y likewise.
+        // Io range is now X0-X27 (24) and Y0-Y27 (24).
         Assert.Equal(8, byAddress["X10"].ProtocolAddress);
         Assert.Equal(16, byAddress["X20"].ProtocolAddress);
         Assert.Equal(18, byAddress["X22"].ProtocolAddress);
+        Assert.Equal(23, byAddress["X27"].ProtocolAddress);
         Assert.Equal(8, byAddress["Y10"].ProtocolAddress);
         Assert.Equal(13, byAddress["Y15"].ProtocolAddress);
+        Assert.Equal(16, byAddress["Y20"].ProtocolAddress);
+        Assert.Equal(23, byAddress["Y27"].ProtocolAddress);
     }
 }

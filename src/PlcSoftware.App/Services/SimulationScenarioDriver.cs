@@ -6,8 +6,8 @@ namespace PlcSoftware.App.Services;
 /// <summary>
 /// Wall-clock driver for the demo <see cref="SimulationScenarioRunner"/>. The in-memory simulation is static
 /// unless something advances its virtual clock, so this hosted loop replays the default scenario on a real
-/// cadence — <c>+250 ms</c> per tick (4 ticks/s) — which drives the D101 heartbeat, the automatic-flow step
-/// pointer (D200 / D102 / M200-M205) and the production counters. Without it the demo showed a frozen
+/// cadence — <c>+250 ms</c> per tick (4 ticks/s) — which drives the D140 heartbeat, the automatic-flow step
+/// pointer (D120 / D102 / M200-M205) and the production counters. Without it the demo showed a frozen
 /// snapshot and the UI contradicted itself (在线 + 心跳丢失); with it the scenario stays alive until shutdown.
 /// Fully in-memory; no transport, no wall-clock reads.
 ///

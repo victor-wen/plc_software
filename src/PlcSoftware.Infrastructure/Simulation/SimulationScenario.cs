@@ -4,14 +4,13 @@ namespace PlcSoftware.Infrastructure.Simulation;
 /// The zero-based protocol addresses the simulated profile exposes for the supervisory-control data
 /// points the automatic flow and monitoring use. These match the <c>point-map.simulation.json</c>
 /// profile (M points are coils, D points are holding registers at their profile protocol addresses;
-/// M200-M205 are the per-step flags, D102 the packed M200-M215 bit-field register, D200 the current
-/// step number, D101 the heartbeat, D110 the fault code and D207/D208 the low/high production-counter
-/// words).
+/// M200-M205 are the per-step flags, D102 the packed M200-M215 bit-field register, D120 the current
+/// step number, D140 the heartbeat, D110 the fault code and D138 the single-word production counter).
 /// </summary>
 public static class SimulationPoints
 {
-    /// <summary>D101, the PLC heartbeat counter (increments every heartbeat period).</summary>
-    public const ushort Heartbeat = 0x0001;
+    /// <summary>D140, the PLC heartbeat counter (increments every heartbeat period).</summary>
+    public const ushort Heartbeat = 40;
 
     /// <summary>D102, the packed register mirroring M200-M215 (bit i = M(200+i); M200 = bit0).</summary>
     public const ushort StepBitsRegister = 0x0002;
@@ -19,20 +18,38 @@ public static class SimulationPoints
     /// <summary>D110, the fault code register, where 0 = no fault and 1..7 = K1..K7.</summary>
     public const ushort FaultCode = 0x000A;
 
-    /// <summary>D200, the current automatic-flow step number (0..5).</summary>
-    public const ushort StepRegister = 0x0064;
+    /// <summary>D120, the current automatic-flow step number (0..5).</summary>
+    public const ushort StepRegister = 20;
 
-    /// <summary>D207, the production-counter low word (least-significant 16 bits).</summary>
-    public const ushort ProductionLow = 0x006B;
-
-    /// <summary>D208, the production-counter high word (most-significant 16 bits).</summary>
-    public const ushort ProductionHigh = 0x006C;
+    /// <summary>D138, the single-word production counter.</summary>
+    public const ushort Production = 38;
 
     /// <summary>M200, the coil of the first step flag (步骤0等待进板).</summary>
     public const ushort FirstStepFlag = 0x00C8;
 
     /// <summary>Number of step-flag coils, M200..M205, covering steps 0..5.</summary>
     public const ushort StepFlagCount = 6;
+
+    /// <summary>D126, 调宽速度(Hz).</summary>
+    public const ushort TuningSpeed = 26;
+
+    /// <summary>D128, 目标宽度(mm).</summary>
+    public const ushort TargetWidth = 28;
+
+    /// <summary>D130, 当前宽度(mm).</summary>
+    public const ushort CurrentWidth = 30;
+
+    /// <summary>D122, 皮带速度(Hz).</summary>
+    public const ushort BeltSpeed = 22;
+
+    /// <summary>D204, 脉冲当量.</summary>
+    public const ushort PulseEquivalent = 104;
+
+    /// <summary>D210, 调宽差值.</summary>
+    public const ushort TuningDelta = 110;
+
+    /// <summary>D136, 调宽脉冲数 single.</summary>
+    public const ushort WidthPulseCount = 36;
 }
 
 /// <summary>
@@ -74,14 +91,14 @@ public abstract record SimulationEvent
     public TimeSpan At { get; init; }
 }
 
-/// <summary>Writes a single holding register (semantically FC06). Used e.g. for D110 / D207 / D208.</summary>
+/// <summary>Writes a single holding register (semantically FC06). Used e.g. for D110 / D138.</summary>
 public sealed record SetRegisterEvent(TimeSpan At, ushort Address, ushort Value) : SimulationEvent(At);
 
 /// <summary>Writes a single coil (semantically FC05). Used e.g. for the M200-M205 step flags.</summary>
 public sealed record SetCoilEvent(TimeSpan At, ushort Address, bool Value) : SimulationEvent(At);
 
 /// <summary>
-/// Advances the automatic flow to <paramref name="Step"/> (0..5): writes the D200 step register and
+/// Advances the automatic flow to <paramref name="Step"/> (0..5): writes the D120 step register and
 /// makes exactly the M(200+step) coil true while clearing the other step-flag coils.
 /// </summary>
 public sealed record SetStepEvent(TimeSpan At, ushort Step) : SimulationEvent(At);
@@ -93,7 +110,7 @@ public sealed record DisconnectEvent(TimeSpan At) : SimulationEvent(At);
 public sealed record ConnectEvent(TimeSpan At) : SimulationEvent(At);
 
 /// <summary>
-/// Configures a repeating heartbeat: the register at <paramref name="Address"/> (D101) is incremented
+/// Configures a repeating heartbeat: the register at <paramref name="Address"/> (D140) is incremented
 /// once per whole <paramref name="Period"/> of elapsed virtual time. The first increment is at the end
 /// of the first full period. Increments are pure integer ticks of virtual time so they are deterministic.
 /// The period must be positive.
@@ -113,7 +130,7 @@ public sealed record SimulationHeartbeat
         Period = period;
     }
 
-    /// <summary>The register address to increment (D101).</summary>
+    /// <summary>The register address to increment (D140).</summary>
     public ushort Address { get; init; }
 
     /// <summary>Period between increments; one increment per whole elapsed period.</summary>
@@ -159,6 +176,6 @@ public sealed class SimulationScenario
     /// <summary>The scheduled events, applied chronologically (any registration order is normalised).</summary>
     public IReadOnlyList<SimulationEvent> Events { get; }
 
-    /// <summary>Optional repeating heartbeat configuration (e.g. D101), or <c>null</c> if none.</summary>
+    /// <summary>Optional repeating heartbeat configuration (e.g. D140), or <c>null</c> if none.</summary>
     public SimulationHeartbeat? Heartbeat { get; }
 }

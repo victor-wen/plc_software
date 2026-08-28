@@ -63,33 +63,37 @@ public class PollingServiceTests
         var run = service.RunAsync(cts.Token);
         try
         {
-            // t = 0: fast, process, Io (X inputs) and Io.Y (Y coils) all fire immediately.
-            await WaitFor(() => results.Count == 4, "all groups did not fire at t=0.");
+            // t = 0: fast, process, params, Io (X inputs) and Io.Y (Y coils) all fire immediately.
+            await WaitFor(() => results.Count == 5, "all groups did not fire at t=0.");
             AssertCount(results, "Fast", 1);
             AssertCount(results, "Process", 1);
+            AssertCount(results, "Params", 1);
             AssertCount(results, "Io", 1);
             AssertCount(results, "Io.Y", 1);
             Assert.All(results, r => Assert.Equal(TimeSpan.Zero, r.Timestamp));
 
             // t = 250: only the fast group fires.
             manual.ReleaseOne();
-            await WaitFor(() => results.Count == 5, "fast group did not fire at t=250.");
+            await WaitFor(() => results.Count == 6, "fast group did not fire at t=250.");
             AssertCount(results, "Fast", 2);
             AssertCount(results, "Process", 1);
+            AssertCount(results, "Params", 1);
             AssertCount(results, "Io", 1);
             AssertCount(results, "Io.Y", 1);
 
-            // t = 500: fast, process and both I/O area groups all fire.
+            // t = 500: fast, process, params and both I/O area groups all fire.
             manual.ReleaseOne();
-            await WaitFor(() => results.Count == 9, "groups did not fire at t=500.");
+            await WaitFor(() => results.Count == 11, "groups did not fire at t=500.");
             AssertCount(results, "Fast", 3);
             AssertCount(results, "Process", 2);
+            AssertCount(results, "Params", 2);
             AssertCount(results, "Io", 2);
             AssertCount(results, "Io.Y", 2);
 
-            // Absolute offsets: Fast at 0/250/500, Process, Io and Io.Y at 0/500.
+            // Absolute offsets: Fast at 0/250/500, Process, Params, Io and Io.Y at 0/500.
             AssertOffsets(results, "Fast", TimeSpan.Zero, FastInterval, TimeSpan.FromMilliseconds(500));
             AssertOffsets(results, "Process", TimeSpan.Zero, ProcessInterval);
+            AssertOffsets(results, "Params", TimeSpan.Zero, TimeSpan.FromMilliseconds(500));
             AssertOffsets(results, "Io", TimeSpan.Zero, ProcessInterval);
             AssertOffsets(results, "Io.Y", TimeSpan.Zero, ProcessInterval);
 
@@ -238,12 +242,12 @@ public class PollingServiceTests
         var ioX = groups.Single(g => g.Name == "Io");
         Assert.Equal(PollingArea.DiscreteInputs, ioX.Area);
         Assert.Equal(0, ioX.StartAddress);   // X0 appears in the point map at protocol address 0.
-        Assert.Equal(19, ioX.Count);         // X0-X22 → protocol addresses 0-18.
+        Assert.Equal(24, ioX.Count);         // X0-X27 → protocol addresses 0-23.
 
         var ioY = groups.Single(g => g.Name == "Io.Y");
         Assert.Equal(PollingArea.Coils, ioY.Area);
         Assert.Equal(0, ioY.StartAddress);   // Y0 appears in the point map at protocol address 0.
-        Assert.Equal(14, ioY.Count);         // Y0-Y15 → protocol addresses 0-13.
+        Assert.Equal(24, ioY.Count);         // Y0-Y27 → protocol addresses 0-23.
     }
 
     /// <summary>

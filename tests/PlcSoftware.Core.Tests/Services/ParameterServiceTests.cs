@@ -5,7 +5,7 @@ using PlcSoftware.Core.Services;
 namespace PlcSoftware.Core.Tests.Services;
 
 /// <summary>
-/// Behavioural tests for <see cref="ParameterService"/>, the D201/D202/D204/D205 range-validation,
+/// Behavioural tests for <see cref="ParameterService"/>, the D126/D128/D204/D122 range-validation,
 /// write and read-back surface of design §4.3/§6.5.
 ///
 /// The service is exercised over an injectable <see cref="IModbusClient"/> (a recording fake with a
@@ -28,9 +28,9 @@ public class ParameterServiceTests
     public async Task Write_MissingLimits_Rejected_NoWrite()
     {
         var client = new RecordingClient();
-        var wr = new ParameterService(client, new FakeGate(), Writable().With("D201", min: null, max: null));
+        var wr = new ParameterService(client, new FakeGate(), Writable().With("D126", min: null, max: null));
 
-        var result = await wr.WriteAsync("D201", 100, CancellationToken.None);
+        var result = await wr.WriteAsync("D126", 100, CancellationToken.None);
 
         Assert.Equal(ParameterWriteStatus.Rejected, result.Status);
         Assert.NotNull(result.Message);
@@ -41,10 +41,10 @@ public class ParameterServiceTests
     public async Task Write_InvalidLimits_MinAboveMax_Rejected_NoWrite()
     {
         var client = new RecordingClient();
-        var wr = new ParameterService(client, new FakeGate(), Writable().With("D201", min: 500, max: 10));
+        var wr = new ParameterService(client, new FakeGate(), Writable().With("D126", min: 500, max: 10));
 
-        // D201 has an invalid configuration (Min 500 > Max 10): the binding constraint forbids writing.
-        var result = await wr.WriteAsync("D201", 100, CancellationToken.None);
+        // D126 has an invalid configuration (Min 500 > Max 10): the binding constraint forbids writing.
+        var result = await wr.WriteAsync("D126", 100, CancellationToken.None);
 
         Assert.Equal(ParameterWriteStatus.Rejected, result.Status);
         Assert.NotNull(result.Message);
@@ -59,8 +59,8 @@ public class ParameterServiceTests
         var client = new RecordingClient();
         var wr = new ParameterService(client, new FakeGate(), Writable());
 
-        // D201 range is [10..500].
-        var result = await wr.WriteAsync("D201", value, CancellationToken.None);
+        // D126 range is [10..500].
+        var result = await wr.WriteAsync("D126", value, CancellationToken.None);
 
         Assert.Equal(ParameterWriteStatus.Rejected, result.Status);
         Assert.NotNull(result.Message);
@@ -68,8 +68,8 @@ public class ParameterServiceTests
     }
 
     [Theory]
-    [InlineData("D200")]   // record step number — read-only.
-    [InlineData("D203")]   // current width — read-only.
+    [InlineData("D120")]   // record step number — read-only.
+    [InlineData("D130")]   // current width — read-only.
     [InlineData("D210")]   // tuning delta — read-only.
     [InlineData("D999")]   // not in the point map at all.
     public async Task Write_ReadOnlyAddress_Rejected_NoWrite(string name)
@@ -90,7 +90,7 @@ public class ParameterServiceTests
         var client = new RecordingClient();
         var wr = new ParameterService(client, new FakeGate { IsOnline = false }, Writable());
 
-        var result = await wr.WriteAsync("D201", 100, CancellationToken.None);
+        var result = await wr.WriteAsync("D126", 100, CancellationToken.None);
 
         Assert.Equal(ParameterWriteStatus.Rejected, result.Status);
         Assert.NotNull(result.Message);
@@ -103,11 +103,11 @@ public class ParameterServiceTests
         var client = new RecordingClient();
         var wr = new ParameterService(client, new FakeGate(), Writable());
 
-        var result = await wr.WriteAsync("D201", 250, CancellationToken.None);
+        var result = await wr.WriteAsync("D126", 250, CancellationToken.None);
 
         Assert.Equal(ParameterWriteStatus.Success, result.Status);
-        // One write at the D201 protocol address (101), then a read-back that matched.
-        Assert.Equal(((ushort)101, (ushort)250), client.Writes.Single());
+        // One write at the D126 protocol address (26), then a read-back that matched.
+        Assert.Equal(((ushort)26, (ushort)250), client.Writes.Single());
         Assert.Equal(250, result.ReadBack);
         Assert.Null(result.Message);
     }
@@ -120,11 +120,11 @@ public class ParameterServiceTests
         var client = new RecordingClient();
         var wr = new ParameterService(client, new FakeGate(), Writable());
 
-        // D201 range is [10..500]; both edges are inclusive and must be writable (and read back identically).
-        var result = await wr.WriteAsync("D201", value, CancellationToken.None);
+        // D126 range is [10..500]; both edges are inclusive and must be writable (and read back identically).
+        var result = await wr.WriteAsync("D126", value, CancellationToken.None);
 
         Assert.Equal(ParameterWriteStatus.Success, result.Status);
-        Assert.Equal(((ushort)101, (ushort)value), client.Writes.Single());
+        Assert.Equal(((ushort)26, (ushort)value), client.Writes.Single());
         Assert.Equal(value, result.ReadBack);
         Assert.Null(result.Message);
     }
@@ -133,13 +133,13 @@ public class ParameterServiceTests
     public async Task Write_MinEqualsMax_SinglePointRange_Allowed_Success()
     {
         var client = new RecordingClient();
-        var wr = new ParameterService(client, new FakeGate(), Writable().With("D201", min: 250, max: 250));
+        var wr = new ParameterService(client, new FakeGate(), Writable().With("D126", min: 250, max: 250));
 
         // Min == Max is a valid configuration: exactly one value is in range, and it is writable.
-        var result = await wr.WriteAsync("D201", 250, CancellationToken.None);
+        var result = await wr.WriteAsync("D126", 250, CancellationToken.None);
 
         Assert.Equal(ParameterWriteStatus.Success, result.Status);
-        Assert.Equal(((ushort)101, (ushort)250), client.Writes.Single());
+        Assert.Equal(((ushort)26, (ushort)250), client.Writes.Single());
         Assert.Equal(250, result.ReadBack);
         Assert.Null(result.Message);
     }
@@ -150,14 +150,14 @@ public class ParameterServiceTests
         var client = new RecordingClient(overrideReadBack: 251);
         var wr = new ParameterService(client, new FakeGate(), Writable());
 
-        var result = await wr.WriteAsync("D201", 250, CancellationToken.None);
+        var result = await wr.WriteAsync("D126", 250, CancellationToken.None);
 
         // The write "landed" (the PLC is believed to have attempted it) but the verified read-back
         // differs, so §5.3 forbids reporting success and §6.5 requires the reason to be recorded.
         Assert.Equal(ParameterWriteStatus.Mismatch, result.Status);
         Assert.NotNull(result.Message);
         Assert.Equal(251, result.ReadBack);
-        Assert.Equal(((ushort)101, (ushort)250), client.Writes.Single());
+        Assert.Equal(((ushort)26, (ushort)250), client.Writes.Single());
     }
 
     [Fact]
@@ -166,13 +166,13 @@ public class ParameterServiceTests
         var client = new RecordingClient(throwOnReadBack: true);
         var wr = new ParameterService(client, new FakeGate(), Writable());
 
-        var result = await wr.WriteAsync("D201", 250, CancellationToken.None);
+        var result = await wr.WriteAsync("D126", 250, CancellationToken.None);
 
         // The write may have reached the PLC but the read-back could not be verified (通信中断), so the
         // outcome is unknown — never success, and no exception escapes to crash the caller.
         Assert.Equal(ParameterWriteStatus.Unknown, result.Status);
         Assert.NotNull(result.Message);
-        Assert.Equal((ushort)101, client.Writes.Single().Address);
+        Assert.Equal((ushort)26, client.Writes.Single().Address);
     }
 
     [Fact]
@@ -181,14 +181,14 @@ public class ParameterServiceTests
         var client = new RecordingClient(emptyReadBack: true);
         var wr = new ParameterService(client, new FakeGate(), Writable());
 
-        var result = await wr.WriteAsync("D201", 250, CancellationToken.None);
+        var result = await wr.WriteAsync("D126", 250, CancellationToken.None);
 
         // The write landed but the read-back returned no register(s) — the outcome is unverifiable, so
         // success is never reported. The reason must be the dedicated empty-read-back message (§5.3).
         Assert.Equal(ParameterWriteStatus.Unknown, result.Status);
         Assert.NotNull(result.Message);
         Assert.Contains("empty", result.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal((ushort)101, client.Writes.Single().Address);
+        Assert.Equal((ushort)26, client.Writes.Single().Address);
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public class ParameterServiceTests
         var client = new RecordingClient(throwOnWrite: true);
         var wr = new ParameterService(client, new FakeGate(), Writable());
 
-        var result = await wr.WriteAsync("D201", 250, CancellationToken.None);
+        var result = await wr.WriteAsync("D126", 250, CancellationToken.None);
 
         Assert.Equal(ParameterWriteStatus.Unknown, result.Status);
         Assert.NotNull(result.Message);
@@ -287,18 +287,18 @@ public class ParameterServiceTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    /// <summary>Default writable set binding D201/D202/D204/D205 to their protocol addresses (design §4.3).</summary>
+    /// <summary>Default writable set binding D126/D128/D204/D122 to their protocol addresses (design §4.3).</summary>
     private static ParameterDefinition[] Writable()
         => new[]
         {
-            Def("D201", 101, 10, 500),
-            Def("D202", 102, 100, 1500),
-            Def("D204", 104, 1, 1000),
-            Def("D205", 105, 10, 1000),
+            Def("D126", 26, "Hz", 10, 500),
+            Def("D128", 28, "mm", 100, 1500),
+            Def("D204", 104, "脉冲/mm", 1, 1000),
+            Def("D122", 22, "Hz", 10, 1000),
         };
 
-    private static ParameterDefinition Def(string name, ushort address, int min, int max)
-        => new() { Name = name, Address = address, Unit = "u", Min = min, Max = max };
+    private static ParameterDefinition Def(string name, ushort address, string unit, int min, int max)
+        => new() { Name = name, Address = address, Unit = unit, Min = min, Max = max };
 }
 
 internal static class ParameterTestExtensions
@@ -310,7 +310,7 @@ internal static class ParameterTestExtensions
         var index = defs.FindIndex(d => d.Name == name);
         if (index >= 0)
         {
-            defs[index] = new ParameterDefinition { Name = name, Address = defs[index].Address, Unit = "u", Min = min, Max = max };
+            defs[index] = new ParameterDefinition { Name = name, Address = defs[index].Address, Unit = defs[index].Unit, Min = min, Max = max };
         }
 
         return defs.ToArray();

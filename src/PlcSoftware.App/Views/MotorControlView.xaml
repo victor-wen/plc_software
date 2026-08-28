@@ -1,0 +1,265 @@
+<UserControl x:Class="PlcSoftware.App.Views.MotorControlView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- 深蓝卡片/标题/数值样式（与威纶通 HMI 一致，使用 ConfigUiTheme） -->
+        <Style x:Key="MotorCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource ConfigUiPanelBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ConfigUiGridLineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="Margin" Value="6" />
+            <Setter Property="MinWidth" Value="190" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#061A2E" BlurRadius="12" ShadowDepth="6" Opacity="0.35" Direction="270" />
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource ConfigUiAccentBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="MotorCardTitleStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiMutedTextBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style x:Key="MotorCardValueStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+            <Setter Property="FontSize" Value="26" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style x:Key="MotorCardUnitStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiMutedTextBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="6,0,0,2" />
+            <Setter Property="VerticalAlignment" Value="Bottom" />
+        </Style>
+        <Style x:Key="MotorTagStyle" TargetType="Border">
+            <Setter Property="Background" Value="#1E6FB8" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
+        <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiMutedTextBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="8,14,8,6" />
+        </Style>
+        <Style x:Key="YellowBannerStyle" TargetType="Border">
+            <Setter Property="Background" Value="#F2C94C" />
+            <Setter Property="BorderBrush" Value="#E0B63C" />
+            <Setter Property="BorderThickness" Value="0,1" />
+            <Setter Property="Padding" Value="12,7" />
+        </Style>
+        <Style x:Key="YellowBannerTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#1B1B1B" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="HmiTitleStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="HmiMutedStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiMutedTextBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="{StaticResource ConfigUiBackgroundBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶部标题栏 -->
+        <Border Grid.Row="0" Background="{StaticResource ConfigUiHeaderBrush}"
+                BorderBrush="{StaticResource ConfigUiAccentBrush}" BorderThickness="0,0,0,2" Padding="14,10">
+            <DockPanel LastChildFill="True">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <Border Width="4" Height="20" Background="{StaticResource ConfigUiAccentBrush}" CornerRadius="2" Margin="0,0,10,0" VerticalAlignment="Center" />
+                    <TextBlock Text="电机控制" Style="{StaticResource HmiTitleStyle}" />
+                    <TextBlock Text="MOTOR CONTROL · 占位" Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="10" Margin="8,4,0,0" VerticalAlignment="Center" Opacity="0.9" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                    <TextBlock Text="连接：" Style="{StaticResource HmiMutedStyle}" />
+                    <TextBlock Text="{Binding ConnectionStatusText}" FontSize="12" VerticalAlignment="Center" Margin="2,0,0,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource HmiMutedStyle}">
+                                <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                        <Setter Property="Foreground" Value="#7ED8A6" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="最后更新：" Style="{StaticResource HmiMutedStyle}" Margin="16,0,0,0" />
+                    <TextBlock Text="{Binding LastUpdateText}" Foreground="{StaticResource ConfigUiTextBrush}" FontSize="12" VerticalAlignment="Center" Margin="2,0,0,0" />
+                    <Button Content="↻" Style="{StaticResource ConfigUiMiniButtonStyle}" Margin="12,0,0,0" Padding="8,2" ToolTip="刷新提示" Command="{Binding RefreshHintCommand}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- 黄色警告条（复用） -->
+        <Border Grid.Row="1" Style="{StaticResource YellowBannerStyle}">
+            <DockPanel LastChildFill="True">
+                <TextBlock Text="⚠" FontSize="14" Foreground="#1B1B1B" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <TextBlock Text="占位页 · 仅显示实时参数（D126 / D122 / D136 / D138 等），点击卡片可跳转参数页修改" Style="{StaticResource YellowBannerTextStyle}" />
+                <TextBlock DockPanel.Dock="Right" Text="{Binding HeaderFeedback}" Foreground="#1B1B1B" FontSize="11" VerticalAlignment="Center" Margin="12,0,0,0" Opacity="0.85" TextWrapping="Wrap" />
+            </DockPanel>
+        </Border>
+
+        <!-- 卡片区 -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="12">
+                <TextBlock Text="电机 / 调宽 / 产量（点击卡片跳转参数页）" Style="{StaticResource SectionLabelStyle}" />
+                <WrapPanel Orientation="Horizontal">
+                    <!-- D126 调宽速度 -->
+                    <Border Style="{StaticResource MotorCardStyle}">
+                        <Border.InputBindings>
+                            <MouseBinding MouseAction="LeftClick" Command="{Binding GoToParametersCommand}" />
+                        </Border.InputBindings>
+                        <StackPanel>
+                            <TextBlock Text="D126  调宽速度" Style="{StaticResource MotorCardTitleStyle}" />
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+                                <TextBlock Text="{Binding TuningSpeed}" Style="{StaticResource MotorCardValueStyle}" />
+                                <TextBlock Text="Hz" Style="{StaticResource MotorCardUnitStyle}" />
+                            </StackPanel>
+                            <Border Style="{StaticResource MotorTagStyle}">
+                                <TextBlock Text="▶ 跳转参数页" Foreground="White" FontSize="10" FontWeight="SemiBold" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- D122 皮带速度 -->
+                    <Border Style="{StaticResource MotorCardStyle}">
+                        <Border.InputBindings>
+                            <MouseBinding MouseAction="LeftClick" Command="{Binding GoToParametersCommand}" />
+                        </Border.InputBindings>
+                        <StackPanel>
+                            <TextBlock Text="D122  皮带速度" Style="{StaticResource MotorCardTitleStyle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding BeltSpeed}" Style="{StaticResource MotorCardValueStyle}" />
+                                <TextBlock Text="Hz" Style="{StaticResource MotorCardUnitStyle}" />
+                            </StackPanel>
+                            <Border Style="{StaticResource MotorTagStyle}">
+                                <TextBlock Text="▶ 跳转参数页" Foreground="White" FontSize="10" FontWeight="SemiBold" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- D136 脉冲数 -->
+                    <Border Style="{StaticResource MotorCardStyle}">
+                        <Border.InputBindings>
+                            <MouseBinding MouseAction="LeftClick" Command="{Binding GoToParametersCommand}" />
+                        </Border.InputBindings>
+                        <StackPanel>
+                            <TextBlock Text="D136  脉冲数" Style="{StaticResource MotorCardTitleStyle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding WidthPulseCount}" Style="{StaticResource MotorCardValueStyle}" />
+                                <TextBlock Text="脉冲" Style="{StaticResource MotorCardUnitStyle}" />
+                            </StackPanel>
+                            <Border Style="{StaticResource MotorTagStyle}">
+                                <TextBlock Text="▶ 跳转参数页" Foreground="White" FontSize="10" FontWeight="SemiBold" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- D138 产量 -->
+                    <Border Style="{StaticResource MotorCardStyle}">
+                        <Border.InputBindings>
+                            <MouseBinding MouseAction="LeftClick" Command="{Binding GoToParametersCommand}" />
+                        </Border.InputBindings>
+                        <StackPanel>
+                            <TextBlock Text="D138  产量" Style="{StaticResource MotorCardTitleStyle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding ProductionCount}" Style="{StaticResource MotorCardValueStyle}" />
+                                <TextBlock Text="件" Style="{StaticResource MotorCardUnitStyle}" />
+                            </StackPanel>
+                            <Border Style="{StaticResource MotorTagStyle}">
+                                <TextBlock Text="▶ 跳转参数页" Foreground="White" FontSize="10" FontWeight="SemiBold" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- D128 目标宽度 -->
+                    <Border Style="{StaticResource MotorCardStyle}">
+                        <Border.InputBindings>
+                            <MouseBinding MouseAction="LeftClick" Command="{Binding GoToParametersCommand}" />
+                        </Border.InputBindings>
+                        <StackPanel>
+                            <TextBlock Text="D128  目标宽度" Style="{StaticResource MotorCardTitleStyle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding TargetWidth}" Style="{StaticResource MotorCardValueStyle}" />
+                                <TextBlock Text="mm" Style="{StaticResource MotorCardUnitStyle}" />
+                            </StackPanel>
+                            <Border Style="{StaticResource MotorTagStyle}">
+                                <TextBlock Text="▶ 跳转参数页" Foreground="White" FontSize="10" FontWeight="SemiBold" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- D130 当前宽度 -->
+                    <Border Style="{StaticResource MotorCardStyle}">
+                        <Border.InputBindings>
+                            <MouseBinding MouseAction="LeftClick" Command="{Binding GoToParametersCommand}" />
+                        </Border.InputBindings>
+                        <StackPanel>
+                            <TextBlock Text="D130  当前宽度" Style="{StaticResource MotorCardTitleStyle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding CurrentWidth}" Style="{StaticResource MotorCardValueStyle}" />
+                                <TextBlock Text="mm" Style="{StaticResource MotorCardUnitStyle}" />
+                            </StackPanel>
+                            <Border Style="{StaticResource MotorTagStyle}">
+                                <TextBlock Text="▶ 跳转参数页" Foreground="White" FontSize="10" FontWeight="SemiBold" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- D210 调宽差值 -->
+                    <Border Style="{StaticResource MotorCardStyle}">
+                        <Border.InputBindings>
+                            <MouseBinding MouseAction="LeftClick" Command="{Binding GoToParametersCommand}" />
+                        </Border.InputBindings>
+                        <StackPanel>
+                            <TextBlock Text="D210  调宽差值" Style="{StaticResource MotorCardTitleStyle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding TuningDelta}" Style="{StaticResource MotorCardValueStyle}" />
+                                <TextBlock Text="" Style="{StaticResource MotorCardUnitStyle}" />
+                            </StackPanel>
+                            <Border Style="{StaticResource MotorTagStyle}">
+                                <TextBlock Text="▶ 跳转参数页" Foreground="White" FontSize="10" FontWeight="SemiBold" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                </WrapPanel>
+
+                <!-- 底部说明卡 -->
+                <Border Style="{StaticResource ConfigUiCardStyle}" Margin="6,12,6,6" Padding="14,12">
+                    <StackPanel>
+                        <TextBlock Text="说明" Foreground="{StaticResource ConfigUiAccentBrush}" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6" />
+                        <TextBlock Text="· 占位页实时显示 D126/D122/D136/D138 等，已接入快照轮询（在线时 250/500 ms 刷新，离线冻结）；"
+                                   Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="12" TextWrapping="Wrap" />
+                        <TextBlock Text="· 点击任意卡片即跳转至「参数」页进行写入（受离线/范围保护，与现有参数写入流程一致）；"
+                                   Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0" />
+                        <TextBlock Text="· 后续可在此扩展：电机启停/点动按钮、速度曲线、产量清零（均走 CommandService / ParameterService）。" 
+                                   Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

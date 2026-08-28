@@ -43,8 +43,8 @@ public class ConfigurablePageViewModelTests
                   { "type": "parameterGroup", "groups": [
                     { "title": "上料道一", "rows": [
                       { "axis": "X轴",
-                        "position": { "register": "D201", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 },
-                        "speed": { "register": "D202", "label": "速度设定(M/S)", "unit": "M/S", "min": 1, "max": 20 } } ] } ] }
+                        "position": { "register": "D126", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 },
+                        "speed": { "register": "D128", "label": "速度设定(M/S)", "unit": "M/S", "min": 1, "max": 20 } } ] } ] }
                 ] },
                 { "id": "history", "title": "报警与历史", "modules": [ { "type": "header" } ] }
                 {{pageExtra}}
@@ -183,7 +183,7 @@ public class ConfigurablePageViewModelTests
         var row = Assert.Single(group.Rows);
         Assert.Equal("X轴", row.Axis);
         Assert.NotNull(row.Position);
-        Assert.Equal("D201", row.Position.Register);
+        Assert.Equal("D126", row.Position.Register);
         Assert.Equal("位置设定(M)", row.Position.Label);
         Assert.NotNull(row.Speed);
     }
@@ -261,8 +261,8 @@ public class ConfigurablePageViewModelTests
         new OnlineGate(),
         new[]
         {
-            new ParameterDefinition { Name = "D201", Address = 101, Unit = "mm", Min = 0, Max = 1000 },
-            new ParameterDefinition { Name = "D202", Address = 102, Unit = "M/S", Min = 1, Max = 20 },
+            new ParameterDefinition { Name = "D126", Address = 26, Unit = "mm", Min = 0, Max = 1000 },
+            new ParameterDefinition { Name = "D128", Address = 28, Unit = "M/S", Min = 1, Max = 20 },
         });
 
     /// <summary>Modbus client whose register file answers reads with the last written value

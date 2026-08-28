@@ -17,6 +17,12 @@
     <SolidColorBrush x:Key="ConfigUiTileOkBrush" Color="#1F7A4D" />
     <SolidColorBrush x:Key="ConfigUiTileAlarmBrush" Color="#B23A3A" />
 
+    <!-- 新增语义色: 警告黄 / 心跳绿 (与 Colors.xaml 同色值，供 ConfigUi 样式直接引用)。 -->
+    <SolidColorBrush x:Key="ConfigUiWarningYellowBrush" Color="#FFCC00" />
+    <SolidColorBrush x:Key="ConfigUiHeartbeatGreenBrush" Color="#00C853" />
+    <SolidColorBrush x:Key="WarningYellowBrush" Color="#FFCC00" />
+    <SolidColorBrush x:Key="HeartbeatGreenBrush" Color="#00C853" />
+
     <!-- HMI module button (menu / nav / command bar / big tile button): solid accent, rounded. -->
     <Style x:Key="ConfigUiModuleButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="{StaticResource ConfigUiButtonBrush}" />

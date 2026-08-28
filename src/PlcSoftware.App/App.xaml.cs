@@ -156,6 +156,30 @@ public partial class App : Application
         var connectionSettings = _host.Services.GetRequiredService<ConnectionSettingsViewModel>();
         supervisor.StateChanged += state => RunOnUi(() => connectionSettings.ApplyConnectionState(state));
 
+        // 主页面 / 功能选择 / 气缸控制：遵循 OverviewViewModel 模式（WPF-free，仅 Snapshot/Connection）
+        var home = _host.Services.GetRequiredService<HomeViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => home.ApplyConnectionState(state));
+        store.SnapshotChanged += (_, snapshot) => RunOnUi(() => home.ApplySnapshot(snapshot));
+
+        var functionSelect = _host.Services.GetRequiredService<FunctionSelectViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => functionSelect.ApplyConnectionState(state));
+        store.SnapshotChanged += (_, snapshot) => RunOnUi(() => functionSelect.ApplySnapshot(snapshot));
+
+        var cylinderControl = _host.Services.GetRequiredService<CylinderControlViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => cylinderControl.ApplyConnectionState(state));
+        store.SnapshotChanged += (_, snapshot) => RunOnUi(() => cylinderControl.ApplySnapshot(snapshot));
+
+        // 操作记录 / 报警总览 / 电机控制（威纶通深蓝占位，WPF-free）
+        var operationRecord = _host.Services.GetRequiredService<OperationRecordViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => operationRecord.ApplyConnectionState(state));
+
+        var alarmOverview = _host.Services.GetRequiredService<AlarmOverviewViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => alarmOverview.ApplyConnectionState(state));
+
+        var motorControl = _host.Services.GetRequiredService<MotorControlViewModel>();
+        supervisor.StateChanged += state => RunOnUi(() => motorControl.ApplyConnectionState(state));
+        store.SnapshotChanged += (_, snapshot) => RunOnUi(() => motorControl.ApplySnapshot(snapshot));
+
         // Seed once after subscribing so an event raised before the subscription (or before the host start
         // finished) is not lost — the first StateChanged/SnapshotChanged/StatusChanged can fire while the
         // hosted loops are still starting, before the wiring above is in place. Latest state wins over any
@@ -176,6 +200,16 @@ public partial class App : Application
         ioDiagnostics.ApplyConnectionState(supervisor.CurrentState);
         ioDiagnostics.ApplySnapshot(store.Current);
         connectionSettings.ApplyConnectionState(supervisor.CurrentState);
+        home.ApplyConnectionState(supervisor.CurrentState);
+        home.ApplySnapshot(store.Current);
+        functionSelect.ApplyConnectionState(supervisor.CurrentState);
+        functionSelect.ApplySnapshot(store.Current);
+        cylinderControl.ApplyConnectionState(supervisor.CurrentState);
+        cylinderControl.ApplySnapshot(store.Current);
+        operationRecord.ApplyConnectionState(supervisor.CurrentState);
+        alarmOverview.ApplyConnectionState(supervisor.CurrentState);
+        motorControl.ApplyConnectionState(supervisor.CurrentState);
+        motorControl.ApplySnapshot(store.Current);
 
         var window = _host.Services.GetRequiredService<MainWindow>();
         window.DataContext = viewModel;
@@ -364,18 +398,40 @@ public partial class App : Application
             serialOptions));
         services.AddSingleton<ConnectionSettingsView>();
 
-        // 报警与历史 page (design §7): date-range query of persisted alarm + host-write audit rows and CSV
-        // export. The HistoryViewModel is WPF-free and takes injected query functions; persistence is via the
-        // SqliteDatabase (local history file). A database failure surfaces on the page's status text — it can
-        // never stop the polling loops (the database is NOT on the polling path).
+        // 主页面 / 功能选择 / 气缸控制（新增 HMI，遵循 OverviewViewModel 模式：INotifyPropertyChanged + ApplySnapshot/ApplyConnectionState，WPF-free 可测试）
+        services.AddSingleton<HomeViewModel>();
+        services.AddSingleton<HomeView>();
+        services.AddSingleton(sp => new FunctionSelectViewModel(
+            sp.GetRequiredService<ICommandService>(),
+            sp.GetRequiredService<ICommandGate>()));
+        services.AddSingleton<FunctionSelectView>();
+        services.AddSingleton<CylinderControlViewModel>();
+        services.AddSingleton<CylinderControlView>();
+
+        // Shared persistence (single WAL file) for History + new HMI pages. A single SqliteDatabase is shared
+        // so the WAL busy timeout and schema are honoured across all readers; Alarm/Audit repositories are pure
+        // wrappers over it. A DB failure never touches the polling path (design §7).
         services.AddSingleton(sp =>
         {
             var dbPath = Path.Combine(AppContext.BaseDirectory, "data", "history.db");
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dbPath))!);
             var db = new PlcSoftware.Infrastructure.Persistence.SqliteDatabase(dbPath);
             db.EnsureSchema();
-            var alarms = new PlcSoftware.Infrastructure.Persistence.AlarmRepository(db);
-            var audits = new PlcSoftware.Infrastructure.Persistence.AuditRepository(db);
+            return db;
+        });
+        services.AddSingleton(sp => new PlcSoftware.Infrastructure.Persistence.AlarmRepository(
+            sp.GetRequiredService<PlcSoftware.Infrastructure.Persistence.SqliteDatabase>()));
+        services.AddSingleton(sp => new PlcSoftware.Infrastructure.Persistence.AuditRepository(
+            sp.GetRequiredService<PlcSoftware.Infrastructure.Persistence.SqliteDatabase>()));
+
+        // 报警与历史 page (design §7): date-range query of persisted alarm + host-write audit rows and CSV
+        // export. The HistoryViewModel is WPF-free and takes injected query functions; persistence is via the
+        // shared SqliteDatabase (local history file). A database failure surfaces on the page's status text — it can
+        // never stop the polling loops (the database is NOT on the polling path).
+        services.AddSingleton(sp =>
+        {
+            var alarms = sp.GetRequiredService<PlcSoftware.Infrastructure.Persistence.AlarmRepository>();
+            var audits = sp.GetRequiredService<PlcSoftware.Infrastructure.Persistence.AuditRepository>();
             return new HistoryViewModel(
                 queryAlarms: (from, to) => alarms.QueryOpened(from, to)
                     .Select(r => new HistoryRow(
@@ -411,26 +467,56 @@ public partial class App : Application
         });
         services.AddSingleton<HistoryView>();
 
+        // 操作记录页（威纶通深蓝 HMI 占位，表格：日期/时间/用户/端口/描述/类型）。
+        // 数据来自 AuditRepository 查询结果映射为 OperationRecordRow（UI 占位显示），可通过 UsePlaceholderWhenEmpty 在空库时演示表格样式。
+        services.AddSingleton(sp =>
+        {
+            var audits = sp.GetRequiredService<PlcSoftware.Infrastructure.Persistence.AuditRepository>();
+            return new OperationRecordViewModel(
+                (from, to) => audits.QueryRange(from, to)
+                    .Select(OperationRecordViewModel.MapAuditRow)
+                    .ToList());
+        });
+        services.AddSingleton<OperationRecordView>();
+
+        // 报警总览页（威纶通深蓝 HMI 占位，表格：日期/时间/文本）。
+        // 数据来自 AlarmRepository + 模拟文本（离线模式/扫码枪屏蔽/安全门屏蔽/光栅屏蔽 三级警告，格式
+        // "三级警告: DB400."400 Alarm".Alarm3[4] 离线模式"），模拟文本可通过 SimulatedTexts 配置。
+        services.AddSingleton(sp =>
+        {
+            var alarms = sp.GetRequiredService<PlcSoftware.Infrastructure.Persistence.AlarmRepository>();
+            return new AlarmOverviewViewModel(
+                (from, to) => alarms.QueryOpened(from, to)
+                    .Select(r => AlarmOverviewViewModel.MapAlarmRow(r))
+                    .ToList());
+        });
+        services.AddSingleton<AlarmOverviewView>();
+
+        // 电机控制占位页：实时显示 D126 调宽速度/D122 皮带速度/D136 脉冲数/D138 产量等，点击跳转参数页。
+        services.AddSingleton<MotorControlViewModel>();
+        services.AddSingleton<MotorControlView>();
+
         services.AddSingleton<MainWindow>();
     }
 
     /// <summary>
-    /// The writable engineering parameters (D201/D202/D204/D205, design §4.3). Ranges are the
+    /// The writable engineering parameters (D126/D128/D204/D122, updated register map). Ranges are the
     /// configured allowed limits; until they are sourced from config they use repository defaults.
     /// Only parameters with a valid configured range are writable (ParameterService rejects otherwise).
+    /// D124/D220 调宽速度设定值(mm/s) are display-only (duplicate label resolved UI-side).
     /// </summary>
     private static IEnumerable<ParameterDefinition> BuildWritableParameters()
         => new[]
         {
-            new ParameterDefinition { Name = "D201", Address = 101, Unit = "Hz", Min = 0, Max = 1000 },    // 调宽速度
-            new ParameterDefinition { Name = "D202", Address = 102, Unit = "mm", Min = 0, Max = 3000 },    // 目标宽度
+            new ParameterDefinition { Name = "D126", Address = 26, Unit = "Hz", Min = 0, Max = 1000 },    // 调宽速度
+            new ParameterDefinition { Name = "D128", Address = 28, Unit = "mm", Min = 0, Max = 3000 },    // 目标宽度
             new ParameterDefinition { Name = "D204", Address = 104, Unit = "脉冲/mm", Min = 0, Max = 10000 }, // 脉冲当量
-            new ParameterDefinition { Name = "D205", Address = 105, Unit = "Hz", Min = 0, Max = 1000 },    // 皮带速度
+            new ParameterDefinition { Name = "D122", Address = 22, Unit = "Hz", Min = 0, Max = 1000 },    // 皮带速度
         };
 
     /// <summary>
     /// The default demo scenario for the in-memory simulation: the automatic-flow step pointer cycles
-    /// 0..5 (one step per second, driving D200 / D102 / M200-M205) and the D101 heartbeat increments once
+    /// 0..5 (one step per second, driving D120 / D102 / M200-M205) and the D140 heartbeat increments once
     /// per second. There are deliberately <em>no</em> fault or connect/disconnect events — a clean, alive
     /// run (the fix for the 在线 + 心跳丢失 contradiction). Fully in-memory; deterministic under the driver's
     /// virtual clock.

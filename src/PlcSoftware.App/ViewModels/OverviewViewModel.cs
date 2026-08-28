@@ -7,10 +7,10 @@ namespace PlcSoftware.App.ViewModels;
 /// <summary>
 /// Maps a decoded <see cref="DeviceSnapshot"/> plus the supervised link state into the read-only
 /// overview display (design §6.2): the 6-step flow highlight (等待进板 / 进料 / 挡停定位 / 触发相机 /
-/// 请求放行 / 放行) driven by D200 and the single-hot M200-M205 flags, the key safety sensors
+/// 请求放行 / 放行) driven by D120 and the single-hot M200-M205 flags, the key safety sensors
 /// (M313 安全光栅, M314 前门, M315 后门, M316 气压), the 挡停 (stopper) position (M303 阻挡原位 /
-/// M304 阻挡工作位), the current/target width (D203/D202), the belt speed (D205) and the production
-/// count (D207.D208 composite).
+/// M304 阻挡工作位), the current/target width (D130/D128), the belt speed (D122) and the production
+/// count (D138 single).
 ///
 /// <para><b>No UI-thread dependency.</b> The view model consumes Core snapshots and state events through
 /// <see cref="ApplySnapshot"/> and <see cref="ApplyConnectionState"/>. It never touches a
@@ -191,7 +191,7 @@ public sealed partial class OverviewViewModel : ObservableObject
         // snapshot yet, so surface 无数据 (LastUpdateTime = null) instead of "0001-01-01 00:00:00".
         LastUpdateTime = snapshot.Timestamp == DateTime.MinValue ? null : snapshot.Timestamp;
 
-        StepNumber = ReadInt(values, "D200") ?? 0;
+        StepNumber = ReadInt(values, "D120") ?? 0;
         ActiveStep = ComputeActiveStep(values, StepNumber);
 
         // 待联调：传感器位 (M313 光栅 / M314 前门 / M315 后门 / M316 气压) 与 挡停 (M303 原位 / M304 工作位)
@@ -204,9 +204,9 @@ public sealed partial class OverviewViewModel : ObservableObject
         StopperHome = ReadBool(values, "M303");
         StopperWork = ReadBool(values, "M304");
 
-        TargetWidth = ReadInt(values, "D202") ?? 0;
-        CurrentWidth = ReadInt(values, "D203") ?? 0;
-        BeltSpeed = ReadInt(values, "D205") ?? 0;
+        TargetWidth = ReadInt(values, "D128") ?? 0;
+        CurrentWidth = ReadInt(values, "D130") ?? 0;
+        BeltSpeed = ReadInt(values, "D122") ?? 0;
         ProductionCount = ReadUInt(values, RegisterDecoder.ProductionCountKey) ?? 0;
     }
 

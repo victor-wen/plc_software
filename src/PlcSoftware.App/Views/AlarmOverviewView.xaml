@@ -1,0 +1,218 @@
+<UserControl x:Class="PlcSoftware.App.Views.AlarmOverviewView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- 威纶通深蓝表格基础（先定义被引用的列头/单元格样式） -->
+        <Style x:Key="HmiColumnHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="{StaticResource ConfigUiHeaderBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="8,7" />
+            <Setter Property="BorderBrush" Value="{StaticResource ConfigUiGridLineBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,1,1" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="MinHeight" Value="34" />
+        </Style>
+        <Style x:Key="HmiCellStyle" TargetType="DataGridCell">
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridCell">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#1E5A8A" />
+                    <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="HmiDataGridRowStyle" TargetType="DataGridRow">
+            <Setter Property="Background" Value="{StaticResource ConfigUiPanelBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#1E5A8A" />
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#184A73" />
+                </Trigger>
+                <Trigger Property="AlternationIndex" Value="1">
+                    <Setter Property="Background" Value="#143A5A" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="HmiDataGridStyle" TargetType="DataGrid">
+            <Setter Property="Background" Value="{StaticResource ConfigUiPanelBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+            <Setter Property="RowBackground" Value="{StaticResource ConfigUiPanelBrush}" />
+            <Setter Property="AlternatingRowBackground" Value="#143A5A" />
+            <Setter Property="GridLinesVisibility" Value="All" />
+            <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource ConfigUiGridLineBrush}" />
+            <Setter Property="VerticalGridLinesBrush" Value="{StaticResource ConfigUiGridLineBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ConfigUiGridLineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="CanUserDeleteRows" Value="False" />
+            <Setter Property="CanUserReorderColumns" Value="False" />
+            <Setter Property="CanUserResizeRows" Value="False" />
+            <Setter Property="SelectionMode" Value="Single" />
+            <Setter Property="SelectionUnit" Value="FullRow" />
+            <Setter Property="RowHeight" Value="30" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="ColumnHeaderStyle" Value="{StaticResource HmiColumnHeaderStyle}" />
+            <Setter Property="CellStyle" Value="{StaticResource HmiCellStyle}" />
+        </Style>
+        <Style x:Key="YellowBannerStyle" TargetType="Border">
+            <Setter Property="Background" Value="#F2C94C" />
+            <Setter Property="BorderBrush" Value="#E0B63C" />
+            <Setter Property="BorderThickness" Value="0,1" />
+            <Setter Property="Padding" Value="12,7" />
+        </Style>
+        <Style x:Key="YellowBannerTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#1B1B1B" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="HmiTitleStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="HmiMutedStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ConfigUiMutedTextBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="{StaticResource ConfigUiBackgroundBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶部标题栏 -->
+        <Border Grid.Row="0" Background="{StaticResource ConfigUiHeaderBrush}"
+                BorderBrush="{StaticResource ConfigUiAccentBrush}" BorderThickness="0,0,0,2" Padding="14,10">
+            <DockPanel LastChildFill="True">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <Border Width="4" Height="20" Background="{StaticResource ConfigUiAccentBrush}" CornerRadius="2" Margin="0,0,10,0" VerticalAlignment="Center" />
+                    <TextBlock Text="报警总览" Style="{StaticResource HmiTitleStyle}" />
+                    <TextBlock Text="ALARM OVERVIEW" Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="10" Margin="8,4,0,0" VerticalAlignment="Center" Opacity="0.9" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                    <TextBlock Text="连接：" Style="{StaticResource HmiMutedStyle}" />
+                    <TextBlock Text="{Binding ConnectionStatusText}" FontSize="12" VerticalAlignment="Center" Margin="2,0,0,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource HmiMutedStyle}">
+                                <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                        <Setter Property="Foreground" Value="#7ED8A6" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="{Binding LastQuerySummary}" Style="{StaticResource HmiMutedStyle}" Margin="16,0,0,0" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- 黄色警告条（复用，主报警条） -->
+        <Border Grid.Row="1" Style="{StaticResource YellowBannerStyle}">
+            <DockPanel LastChildFill="True">
+                <TextBlock Text="⚠" FontSize="14" Foreground="#1B1B1B" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <TextBlock Text="{Binding BannerText}" Style="{StaticResource YellowBannerTextStyle}" />
+            </DockPanel>
+        </Border>
+
+        <!-- 查询栏 -->
+        <Border Grid.Row="2" Style="{StaticResource ConfigUiCardStyle}" Margin="12,12,12,8" Padding="12,10">
+            <DockPanel LastChildFill="True">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <TextBlock Text="从" Style="{StaticResource HmiMutedStyle}" Margin="0,0,4,0" VerticalAlignment="Center" />
+                    <DatePicker Width="140" SelectedDate="{Binding DateFrom}" Margin="0,0,8,0" />
+                    <TextBlock Text="到" Style="{StaticResource HmiMutedStyle}" Margin="0,0,4,0" VerticalAlignment="Center" />
+                    <DatePicker Width="140" SelectedDate="{Binding DateTo}" Margin="0,0,12,0" />
+                    <Button Content="查询" Style="{StaticResource ConfigUiModuleButtonStyle}" Padding="16,5" MinWidth="0" Command="{Binding QueryCommand}" />
+                    <TextBlock Text="模拟文本（离线模式/扫码枪屏蔽/安全门屏蔽/光栅屏蔽 · 三级警告）可配置" Style="{StaticResource HmiMutedStyle}" Margin="16,0,0,0" VerticalAlignment="Center" Opacity="0.85" TextWrapping="Wrap" MaxWidth="380" />
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}" Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="12"
+                           VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap" TextAlignment="Right" MaxWidth="360" />
+            </DockPanel>
+        </Border>
+
+        <!-- 表格：日期 / 时间 / 文本 -->
+        <Border Grid.Row="3" Margin="12,0,12,8" Background="{StaticResource ConfigUiPanelBrush}"
+                BorderBrush="{StaticResource ConfigUiGridLineBrush}" BorderThickness="1" CornerRadius="8" Padding="0" ClipToBounds="True">
+            <DataGrid Style="{StaticResource HmiDataGridStyle}"
+                      AlternationCount="2"
+                      ItemsSource="{Binding Rows}">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow" BasedOn="{StaticResource HmiDataGridRowStyle}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Level}" Value="2">
+                                <Setter Property="Background" Value="#3A2E0A" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Level}" Value="1">
+                                <Setter Property="Background" Value="#4A1C1C" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="日期" Binding="{Binding Date}" Width="125">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="HorizontalAlignment" Value="Center" />
+                                <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="时间" Binding="{Binding Time}" Width="105">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="HorizontalAlignment" Value="Center" />
+                                <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="文本" Binding="{Binding Text}" Width="*">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource ConfigUiTextBrush}" />
+                                <Setter Property="TextWrapping" Value="Wrap" />
+                                <Setter Property="Padding" Value="6,0" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <TextBlock Grid.Row="4" Text="{Binding StatusText}" Foreground="{StaticResource ConfigUiMutedTextBrush}" FontSize="12" Margin="16,0,16,12" TextWrapping="Wrap" />
+    </Grid>
+</UserControl>

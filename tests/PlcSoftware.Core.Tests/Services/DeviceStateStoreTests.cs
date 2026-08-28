@@ -34,13 +34,13 @@ public class DeviceStateStoreTests
     {
         var store = new DeviceStateStore();
         var snapshot = new DeviceSnapshot(
-            new Dictionary<string, object?> { ["D101"] = (ushort)1 },
+            new Dictionary<string, object?> { ["D140"] = (ushort)1 },
             DateTime.UtcNow);
 
         store.Publish(snapshot);
 
         Assert.Same(snapshot, store.Current);
-        Assert.Equal((ushort)1, store.Current.Values["D101"]);
+        Assert.Equal((ushort)1, store.Current.Values["D140"]);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public class DeviceStateStoreTests
     public void Publish_DefensivelyFreezesValues_MutationOfSourceDoesNotAlterPublishedSnapshot()
     {
         var store = new DeviceStateStore();
-        var source = new Dictionary<string, object?> { ["D101"] = (ushort)1 };
+        var source = new Dictionary<string, object?> { ["D140"] = (ushort)1 };
         var snapshot = new DeviceSnapshot(source, DateTime.UtcNow);
 
         DeviceSnapshot? delivered = null;
@@ -81,16 +81,16 @@ public class DeviceStateStoreTests
 
         // Mutate the caller's dictionary after publish. A published snapshot must be immutable,
         // otherwise these mutations would retroactively alter Current and the event-delivered snapshot.
-        source["D101"] = (ushort)999;
+        source["D140"] = (ushort)999;
         source["added"] = "later";
-        source.Remove("D101");
+        source.Remove("D140");
 
         Assert.Same(snapshot, store.Current);
-        Assert.Equal((ushort)1, store.Current.Values["D101"]);
+        Assert.Equal((ushort)1, store.Current.Values["D140"]);
         Assert.False(store.Current.Values.ContainsKey("added"));
 
         Assert.NotNull(delivered);
-        Assert.Equal((ushort)1, delivered.Values["D101"]);
+        Assert.Equal((ushort)1, delivered.Values["D140"]);
         Assert.False(delivered.Values.ContainsKey("added"));
     }
 

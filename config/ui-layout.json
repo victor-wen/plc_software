@@ -2,7 +2,7 @@
   "app": {
     "title": "自动化设备",
     "logo": "VISA",
-    "defaultPage": "login",
+    "defaultPage": "home",
     "users": [
       {
         "username": "admin",
@@ -464,14 +464,14 @@
                 {
                   "axis": "X轴",
                   "position": {
-                    "register": "D201",
+                    "register": "D126",
                     "label": "位置设定(M)",
                     "unit": "mm",
                     "min": 0,
                     "max": 1000
                   },
                   "speed": {
-                    "register": "D202",
+                    "register": "D128",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -488,7 +488,7 @@
                     "max": 10000
                   },
                   "speed": {
-                    "register": "D205",
+                    "register": "D122",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -498,14 +498,14 @@
                 {
                   "axis": "Z轴",
                   "position": {
-                    "register": "D201",
+                    "register": "D126",
                     "label": "位置设定(M)",
                     "unit": "mm",
                     "min": 0,
                     "max": 1000
                   },
                   "speed": {
-                    "register": "D202",
+                    "register": "D128",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -522,7 +522,7 @@
                     "max": 10000
                   },
                   "speed": {
-                    "register": "D205",
+                    "register": "D122",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -537,14 +537,14 @@
                 {
                   "axis": "X轴",
                   "position": {
-                    "register": "D201",
+                    "register": "D126",
                     "label": "位置设定(M)",
                     "unit": "mm",
                     "min": 0,
                     "max": 1000
                   },
                   "speed": {
-                    "register": "D202",
+                    "register": "D128",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -561,7 +561,7 @@
                     "max": 10000
                   },
                   "speed": {
-                    "register": "D205",
+                    "register": "D122",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -571,14 +571,14 @@
                 {
                   "axis": "Z轴",
                   "position": {
-                    "register": "D201",
+                    "register": "D126",
                     "label": "位置设定(M)",
                     "unit": "mm",
                     "min": 0,
                     "max": 1000
                   },
                   "speed": {
-                    "register": "D202",
+                    "register": "D128",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -595,7 +595,7 @@
                     "max": 10000
                   },
                   "speed": {
-                    "register": "D205",
+                    "register": "D122",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -610,14 +610,14 @@
                 {
                   "axis": "X轴",
                   "position": {
-                    "register": "D201",
+                    "register": "D126",
                     "label": "位置设定(M)",
                     "unit": "mm",
                     "min": 0,
                     "max": 1000
                   },
                   "speed": {
-                    "register": "D202",
+                    "register": "D128",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -634,7 +634,7 @@
                     "max": 10000
                   },
                   "speed": {
-                    "register": "D205",
+                    "register": "D122",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -644,14 +644,14 @@
                 {
                   "axis": "Z轴",
                   "position": {
-                    "register": "D201",
+                    "register": "D126",
                     "label": "位置设定(M)",
                     "unit": "mm",
                     "min": 0,
                     "max": 1000
                   },
                   "speed": {
-                    "register": "D202",
+                    "register": "D128",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -668,7 +668,7 @@
                     "max": 10000
                   },
                   "speed": {
-                    "register": "D205",
+                    "register": "D122",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -683,14 +683,14 @@
                 {
                   "axis": "X轴",
                   "position": {
-                    "register": "D201",
+                    "register": "D126",
                     "label": "位置设定(M)",
                     "unit": "mm",
                     "min": 0,
                     "max": 1000
                   },
                   "speed": {
-                    "register": "D202",
+                    "register": "D128",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -707,7 +707,7 @@
                     "max": 10000
                   },
                   "speed": {
-                    "register": "D205",
+                    "register": "D122",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -717,14 +717,14 @@
                 {
                   "axis": "Z轴",
                   "position": {
-                    "register": "D201",
+                    "register": "D126",
                     "label": "位置设定(M)",
                     "unit": "mm",
                     "min": 0,
                     "max": 1000
                   },
                   "speed": {
-                    "register": "D202",
+                    "register": "D128",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,
@@ -741,7 +741,7 @@
                     "max": 10000
                   },
                   "speed": {
-                    "register": "D205",
+                    "register": "D122",
                     "label": "速度设定(M/S)",
                     "unit": "M/S",
                     "min": 0,

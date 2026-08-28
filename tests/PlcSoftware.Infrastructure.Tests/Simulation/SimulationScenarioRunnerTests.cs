@@ -231,26 +231,25 @@ public class SimulationScenarioRunnerTests
         Assert.Equal((ushort)1, await ReadHoldingRegisterAsync(client, SimulationPoints.StepRegister));
     }
 
-    // --- Production counters (D207 low / D208 high) -------------------------------------
+    // --- Production counter D138 single word -------------------------------------
 
     [Fact]
-    public async Task Scenario_DrivesProductionCounters_LowAndHighWord()
+    public async Task Scenario_DrivesProductionCounter_SingleWord()
     {
         var client = new InMemoryModbusClient();
         await client.ConnectAsync(CancellationToken.None);
         var scenario = new SimulationScenario(new SimulationEvent[]
         {
-            new SetRegisterEvent(TimeSpan.FromSeconds(1), SimulationPoints.ProductionLow, 5),
-            new SetRegisterEvent(TimeSpan.FromSeconds(2), SimulationPoints.ProductionHigh, 1),
+            new SetRegisterEvent(TimeSpan.FromSeconds(1), SimulationPoints.Production, 5),
+            new SetRegisterEvent(TimeSpan.FromSeconds(2), SimulationPoints.Production, 6),
         });
         var runner = new SimulationScenarioRunner(scenario, client);
 
         runner.Advance(TimeSpan.FromSeconds(1));
-        Assert.Equal((ushort)5, await ReadHoldingRegisterAsync(client, SimulationPoints.ProductionLow));
-        Assert.Equal((ushort)0, await ReadHoldingRegisterAsync(client, SimulationPoints.ProductionHigh));
+        Assert.Equal((ushort)5, await ReadHoldingRegisterAsync(client, SimulationPoints.Production));
 
         runner.Advance(TimeSpan.FromSeconds(1));
-        Assert.Equal((ushort)1, await ReadHoldingRegisterAsync(client, SimulationPoints.ProductionHigh));
+        Assert.Equal((ushort)6, await ReadHoldingRegisterAsync(client, SimulationPoints.Production));
     }
 
     // --- Fake-clock injection / validation ---------------------------------------------

@@ -7,7 +7,7 @@ namespace PlcSoftware.App.Tests.ViewModels;
 /// <summary>
 /// Pins how <see cref="OverviewViewModel"/> maps a decoded <see cref="DeviceSnapshot"/> plus the
 /// supervised link state into the read-only overview display (design §6.2): the 6-step flow highlight
-/// driven by D200 + the single-hot M200-M205 flags, the key sensor / stopper state, the width / belt
+/// driven by D120 + the single-hot M200-M205 flags, the key sensor / stopper state, the width / belt
 /// speed / production readouts, and the offline behaviour (the displays grey out while the last-update
 /// timestamp is preserved).
 ///
@@ -21,11 +21,11 @@ public class OverviewViewModelTests
     private static IReadOnlyDictionary<string, object?> Snap(params (string Key, object? Value)[] values)
         => values.ToDictionary(v => v.Key, v => v.Value);
 
-    /// <summary>Builds a consistent single-hot step snapshot: D200 = <paramref name="step"/> and exactly
+    /// <summary>Builds a consistent single-hot step snapshot: D120 = <paramref name="step"/> and exactly
     /// the M(200+step) flag true while the other five step flags are false.</summary>
     private static IReadOnlyDictionary<string, object?> StepSnap(int step)
     {
-        var items = new List<(string Key, object? Value)> { ("D200", (ushort)step) };
+        var items = new List<(string Key, object? Value)> { ("D120", (ushort)step) };
         for (var i = 0; i < 6; i++)
         {
             items.Add(("M" + (200 + i), i == step));
@@ -37,7 +37,7 @@ public class OverviewViewModelTests
     private static bool[] Highlights(OverviewViewModel vm)
         => new[] { vm.IsStep0, vm.IsStep1, vm.IsStep2, vm.IsStep3, vm.IsStep4, vm.IsStep5 };
 
-    // --- D200 + M200-M205 step highlight mapping (design §6.2) ---
+    // --- D120 + M200-M205 step highlight mapping (design §6.2) ---
 
     [Fact]
     public void Snapshot_step_maps_active_step_and_highlight()
@@ -74,7 +74,7 @@ public class OverviewViewModelTests
         Assert.Equal(step, vm.ActiveStep);
         Assert.Equal(expectedName, vm.StepName);
 
-        // Single-hot sanity: exactly one step flag is true, and it is the D200/M(200+step) one.
+        // Single-hot sanity: exactly one step flag is true, and it is the D120/M(200+step) one.
         var highlights = Highlights(vm);
         for (var i = 0; i < highlights.Length; i++)
         {
@@ -89,8 +89,8 @@ public class OverviewViewModelTests
     {
         var vm = new OverviewViewModel();
 
-        // D200 present but no M200-M205 flag: the step number alone still resolves the highlight.
-        vm.ApplySnapshot(new DeviceSnapshot(Snap(("D200", (ushort)3)), DateTime.UtcNow));
+        // D120 present but no M200-M205 flag: the step number alone still resolves the highlight.
+        vm.ApplySnapshot(new DeviceSnapshot(Snap(("D120", (ushort)3)), DateTime.UtcNow));
 
         Assert.Equal(3, vm.StepNumber);
         Assert.Equal(3, vm.ActiveStep);
@@ -104,7 +104,7 @@ public class OverviewViewModelTests
 
         // Two live step flags is a corrupt/racing snapshot: do not highlight a wrong step.
         vm.ApplySnapshot(new DeviceSnapshot(
-            Snap(("D200", (ushort)1), ("M201", true), ("M205", true)),
+            Snap(("D120", (ushort)1), ("M201", true), ("M205", true)),
             DateTime.UtcNow));
 
         Assert.Equal(1, vm.StepNumber);
@@ -114,15 +114,15 @@ public class OverviewViewModelTests
     }
 
     [Fact]
-    public void Single_live_flag_wins_over_disagreeing_d200()
+    public void Single_live_flag_wins_over_disagreeing_D120()
     {
         var vm = new OverviewViewModel();
 
-        // D200 says step 1 but only M205 is live: the single live flag (fast group, polled fresher than
-        // the process group) wins the highlight, while StepNumber still surfaces the raw D200 so the
+        // D120 says step 1 but only M205 is live: the single live flag (fast group, polled fresher than
+        // the process group) wins the highlight, while StepNumber still surfaces the raw D120 so the
         // divergence between the two is visible to the operator.
         vm.ApplySnapshot(new DeviceSnapshot(
-            Snap(("D200", (ushort)1), ("M205", true)),
+            Snap(("D120", (ushort)1), ("M205", true)),
             DateTime.UtcNow));
 
         Assert.Equal(1, vm.StepNumber);
@@ -212,7 +212,7 @@ public class OverviewViewModelTests
         var vm = new OverviewViewModel();
 
         vm.ApplySnapshot(new DeviceSnapshot(Snap(
-            ("D200", (ushort)4),
+            ("D120", (ushort)4),
             ("M204", true),
             ("M313", true),   // 安全光栅 X7 — triggered/blocked.
             ("M314", true),   // 前门 X16 — open.
@@ -220,10 +220,10 @@ public class OverviewViewModelTests
             ("M316", false),  // 气压 X22 — low.
             ("M303", true),   // 阻挡原位 X20 — at home.
             ("M304", false),  // 阻挡工作位 X21 — not extended.
-            ("D202", (ushort)800),  // target width.
-            ("D203", (ushort)795),  // current width.
-            ("D205", (ushort)50),   // belt speed.
-            (RegisterDecoder.ProductionCountKey, 123456u)), DateTime.UtcNow));
+            ("D128", (ushort)800),  // target width.
+            ("D130", (ushort)795),  // current width.
+            ("D122", (ushort)50),   // belt speed.
+            (RegisterDecoder.ProductionCountKey, (ushort)12345)), DateTime.UtcNow));
 
         Assert.True(vm.LightCurtain);
         Assert.Equal("遮挡", vm.LightCurtainStatus);
@@ -241,6 +241,6 @@ public class OverviewViewModelTests
         Assert.Equal(800, vm.TargetWidth);
         Assert.Equal(795, vm.CurrentWidth);
         Assert.Equal(50, vm.BeltSpeed);
-        Assert.Equal(123456u, vm.ProductionCount);
+        Assert.Equal(12345u, vm.ProductionCount);
     }
 }

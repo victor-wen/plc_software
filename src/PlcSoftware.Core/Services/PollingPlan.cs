@@ -62,7 +62,7 @@ public sealed class PollingGroup
         Area = area;
     }
 
-    /// <summary>Human-readable group name (e.g. "Fast", "Process", "Io").</summary>
+    /// <summary>Human-readable group name (e.g. "Fast", "Process", "Params", "Io").</summary>
     public string Name { get; }
 
     /// <summary>Nominal interval between reads of this group.</summary>
@@ -84,14 +84,13 @@ public sealed class PollingGroup
 /// <summary>
 /// Declarative polling plan: the ordered list of groups the <see cref="PollingService"/> executes.
 ///
-/// <see cref="Default"/> encodes the design groups (design §5.1):
+/// <see cref="Default"/> encodes the design groups (updated to the new register map):
 ///   <list type="bullet">
 ///     <item><b>Fast</b> — every 250 ms reads the D100-D110 block (protocol addresses 0-10).</item>
-///     <item><b>Process</b> — every 500 ms reads the D200-D213 block (protocol addresses 100-113).</item>
-///     <item><b>Io</b> — every 500 ms reads the X input block (protocol addresses 0-18) for I/O diagnostics.</item>
-///     <item><b>Io.Y</b> — every 500 ms reads the Y output (coil) block (protocol addresses 0-13); the
-///       I/O diagnostic group of design §5.1 reads the X/Y regions per the point map, so it is modelled
-///       as two area reads carrying the same "Io" group.</item>
+///     <item><b>Process</b> — every 500 ms reads the D120-D140 block (protocol addresses 20-40, 21 registers).</item>
+///     <item><b>Params</b> — every 500 ms reads the D204-D220 block (protocol addresses 104-120, 17 registers).</item>
+///     <item><b>Io</b> — every 500 ms reads the X input block (protocol addresses 0-23, 24 discrete inputs).</item>
+///     <item><b>Io.Y</b> — every 500 ms reads the Y output (coil) block (protocol addresses 0-23, 24 coils).</item>
 ///   </list>
 /// Only reads and writes that belong to the process/command surface are modelled here; each group's
 /// payload is decoded by a later layer, not by the polling service itself.
@@ -132,11 +131,13 @@ public sealed class PollingPlan
         {
             // D100-D110 → protocol addresses 0-10 (11 registers).
             new PollingGroup("Fast", TimeSpan.FromMilliseconds(250), 1, 0, 11),
-            // D200-D213 → protocol addresses 100-113 (14 registers).
-            new PollingGroup("Process", TimeSpan.FromMilliseconds(500), 1, 100, 14),
-            // X0-X22 → protocol addresses 0-18 (19 discrete inputs).
-            new PollingGroup("Io", TimeSpan.FromMilliseconds(500), 1, 0, 19, PollingArea.DiscreteInputs),
-            // Y0-Y15 → protocol addresses 0-13 (14 coils); the I/O diagnostic group reads the X/Y regions.
-            new PollingGroup("Io.Y", TimeSpan.FromMilliseconds(500), 1, 0, 14, PollingArea.Coils),
+            // D120-D140 → protocol addresses 20-40 (21 registers: D120/122/124/126/128/130/136/138/140).
+            new PollingGroup("Process", TimeSpan.FromMilliseconds(500), 1, 20, 21),
+            // D204-D220 → protocol addresses 104-120 (17 registers: D204/D210/D220).
+            new PollingGroup("Params", TimeSpan.FromMilliseconds(500), 1, 104, 17),
+            // X0-X27 → protocol addresses 0-23 (24 discrete inputs, octal 0-27 → decimal 0-23).
+            new PollingGroup("Io", TimeSpan.FromMilliseconds(500), 1, 0, 24, PollingArea.DiscreteInputs),
+            // Y0-Y27 → protocol addresses 0-23 (24 coils).
+            new PollingGroup("Io.Y", TimeSpan.FromMilliseconds(500), 1, 0, 24, PollingArea.Coils),
         });
 }

@@ -92,10 +92,10 @@ public class UiLayoutLoaderTests
                   { "type": "parameterGroup", "groups": [
                     { "title": "上料道一", "rows": [
                       { "axis": "X轴",
-                        "position": { "register": "D201", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 },
-                        "speed": { "register": "D202", "label": "速度设定(M/S)", "unit": "M/S", "min": 1, "max": 20 } },
+                        "position": { "register": "D126", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 },
+                        "speed": { "register": "D128", "label": "速度设定(M/S)", "unit": "M/S", "min": 1, "max": 20 } },
                       { "axis": "Y轴",
-                        "position": { "register": "D203", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 },
+                        "position": { "register": "D130", "label": "位置设定(M)", "unit": "mm", "min": 0, "max": 1000 },
                         "speed": { "register": "D204", "label": "速度设定(M/S)", "unit": "M/S", "min": 1, "max": 20 } }
                     ] }
                   ] },
@@ -131,7 +131,7 @@ public class UiLayoutLoaderTests
         Assert.Equal(2, group.Rows.Count);
         Assert.Equal("X轴", group.Rows[0].Axis);
         var xRow = group.Rows[0];
-        Assert.Equal("D201", xRow.Position!.Register);
+        Assert.Equal("D126", xRow.Position!.Register);
         Assert.Equal(1000, xRow.Position.Max);
         Assert.Equal(20, xRow.Speed!.Max);
         var hosted = position.Modules.Single(m => m.Type == UiModuleType.PageHost);

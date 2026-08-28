@@ -3,13 +3,13 @@ using PlcSoftware.Core.Services;
 namespace PlcSoftware.Core.Tests.Services;
 
 /// <summary>
-/// Behavioural tests for <see cref="HeartbeatMonitor"/> (the D101 heartbeat-lost detector).
+/// Behavioural tests for <see cref="HeartbeatMonitor"/> (the D140 heartbeat-lost detector).
 ///
 /// Verified rules:
-///   - D101 does NOT have to advance by exactly one: any different value counts as a change and keeps
+///   - D140 does NOT have to advance by exactly one: any different value counts as a change and keeps
 ///     the device online;
 ///   - UInt16 wraparound (65535 → 0) still counts as a change;
-///   - holding the same D101 value for the 3-second timeout without any change moves the device to
+///   - holding the same D140 value for the 3-second timeout without any change moves the device to
 ///     <see cref="HeartbeatStatus.Lost"/>;
 ///   - a later change (a different value) resumes <see cref="HeartbeatStatus.Online"/>.
 ///

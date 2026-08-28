@@ -70,10 +70,10 @@ internal sealed class PlcRuntime : BackgroundService
     {
         var values = snapshot.Values;
 
-        // D101 heartbeat counter → heartbeat monitor (any different value proves the PLC is alive).
-        if (values.TryGetValue("D101", out var heartbeat) && heartbeat is ushort d101)
+        // D140 heartbeat counter → heartbeat monitor (any different value proves the PLC is alive).
+        if (values.TryGetValue("D140", out var heartbeat) && heartbeat is ushort d140)
         {
-            _heartbeat.Observe(d101);
+            _heartbeat.Observe(d140);
         }
 
         // D110 fault code → alarm service (0 = no fault).

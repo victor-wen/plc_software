@@ -7,9 +7,9 @@ namespace PlcSoftware.App.Tests.ViewModels;
 
 /// <summary>
 /// Pins how <see cref="ParametersViewModel"/> drives the parameter page (design §6.5): the editable
-/// D201/D202/D204/D205 write flow — validate integer input → show old/new/unit/range → confirm →
+/// D126/D128/D204/D122 write flow — validate integer input → show old/new/unit/range → confirm →
 /// <see cref="ParameterService"/>(write + read-back) → report the result including Mismatch / Unknown —
-/// plus the read-only D203/D210/D212.D213 display, the offline gate and the save-in-progress
+/// plus the read-only D130/D210/D136/D138 display, the offline gate and the save-in-progress
 /// duplicate-click guard.
 ///
 /// <para><b>Write flow (design §6.5).</b> A non-integer input is rejected with an error and no write;
@@ -39,13 +39,13 @@ public class ParametersViewModelTests
     /// <summary>A live process snapshot: every editable parameter plus the read-only registers.</summary>
     private static DeviceSnapshot LiveSnapshot()
         => new DeviceSnapshot(
-            Snap(("D201", (ushort)250), ("D202", (ushort)1200), ("D204", (ushort)50),
-                ("D205", (ushort)200), ("D203", (ushort)1200), ("D210", (ushort)5),
-                (RegisterDecoder.WidthPulseCountKey, 123456u)),
+            Snap(("D126", (ushort)250), ("D128", (ushort)1200), ("D204", (ushort)50),
+                ("D122", (ushort)200), ("D130", (ushort)1200), ("D210", (ushort)5),
+                (RegisterDecoder.WidthPulseCountKey, (ushort)1234), ("D138", (ushort)5678)),
             DateTime.UtcNow);
 
     /// <summary>Builds an online VM over a real <see cref="ParameterService"/>, a recording Modbus fake and a
-    /// controllable gate (the D201 editor is index 0, matching the App wiring order).</summary>
+    /// controllable gate (the D126 editor is index 0, matching the App wiring order).</summary>
     private static (FakeGate Gate, FakeModbusClient Client, ParametersViewModel Vm) Build(bool online = true)
     {
         var gate = new FakeGate { IsOnline = online };
@@ -61,13 +61,13 @@ public class ParametersViewModelTests
     public void Non_integer_input_is_rejected()
     {
         var (_, _, vm) = Build();
-        var d201 = vm.WritableParameters[0];
-        d201.InputText = "abc";
+        var d126 = vm.WritableParameters[0]; // D126
+        d126.InputText = "abc";
 
-        vm.PrepareWriteCommand.Execute(d201);
+        vm.PrepareWriteCommand.Execute(d126);
 
-        Assert.Equal("请输入整数。", d201.Error);
-        Assert.False(d201.IsPending);
+        Assert.Equal("请输入整数。", d126.Error);
+        Assert.False(d126.IsPending);
         Assert.False(vm.IsPending);
     }
 
@@ -75,14 +75,14 @@ public class ParametersViewModelTests
     public void Out_of_range_input_is_rejected_with_the_allowed_range()
     {
         var (_, _, vm) = Build();
-        var d201 = vm.WritableParameters[0]; // D201 range is 10 ~ 500.
-        d201.InputText = "600";
+        var d126 = vm.WritableParameters[0]; // D126 range is 10 ~ 500.
+        d126.InputText = "600";
 
-        vm.PrepareWriteCommand.Execute(d201);
+        vm.PrepareWriteCommand.Execute(d126);
 
-        Assert.Contains("超出允许范围", d201.Error);
-        Assert.Contains("10 ~ 500", d201.Error);
-        Assert.False(d201.IsPending);
+        Assert.Contains("超出允许范围", d126.Error);
+        Assert.Contains("10 ~ 500", d126.Error);
+        Assert.False(d126.IsPending);
     }
 
     [Fact]
@@ -100,16 +100,16 @@ public class ParametersViewModelTests
         // 上下限未配置或配置非法时禁止写入) — clearer than deferring it to the injected service.
         var gate = new FakeGate { IsOnline = true };
         var client = new FakeModbusClient();
-        var definitions = new[] { Def("D201", 101, "Hz", null, null) };
+        var definitions = new[] { Def("D126", 26, "Hz", null, null) };
         var vm = new ParametersViewModel(new ParameterService(client, gate, definitions), gate, definitions);
         vm.ApplyConnectionState(ConnectionState.Online);
-        var d201 = vm.WritableParameters[0];
-        d201.InputText = "300";
+        var d126 = vm.WritableParameters[0];
+        d126.InputText = "300";
 
-        vm.PrepareWriteCommand.Execute(d201);
+        vm.PrepareWriteCommand.Execute(d126);
 
-        Assert.Contains("未配置范围", d201.Error);
-        Assert.False(d201.IsPending);
+        Assert.Contains("未配置范围", d126.Error);
+        Assert.False(d126.IsPending);
         Assert.False(vm.IsPending);
         Assert.Empty(client.Writes); // nothing reached the client.
     }
@@ -118,14 +118,14 @@ public class ParametersViewModelTests
     public void Editing_the_input_clears_the_previous_validation_error()
     {
         var (_, _, vm) = Build();
-        var d201 = vm.WritableParameters[0];
-        d201.InputText = "abc";
-        vm.PrepareWriteCommand.Execute(d201);
-        Assert.Equal("请输入整数。", d201.Error);
+        var d126 = vm.WritableParameters[0]; // D126
+        d126.InputText = "abc";
+        vm.PrepareWriteCommand.Execute(d126);
+        Assert.Equal("请输入整数。", d126.Error);
 
         // Re-typing a value clears the stale error (design §6.5: 输入即清空错误提示).
-        d201.InputText = "100";
-        Assert.Null(d201.Error);
+        d126.InputText = "100";
+        Assert.Null(d126.Error);
     }
 
     // --- Confirmation prompt (design §6.5: 写入前显示旧值、新值、单位和允许范围) --------------------------
@@ -134,35 +134,35 @@ public class ParametersViewModelTests
     public void Valid_input_stages_confirmation_with_old_new_unit_range()
     {
         var (_, _, vm) = Build();
-        var d201 = vm.WritableParameters[0];
-        vm.ApplySnapshot(LiveSnapshot()); // D201 old value = 250.
-        d201.InputText = "300";
+        var d126 = vm.WritableParameters[0]; // D126
+        vm.ApplySnapshot(LiveSnapshot()); // D126 old value = 250.
+        d126.InputText = "300";
 
-        vm.PrepareWriteCommand.Execute(d201);
+        vm.PrepareWriteCommand.Execute(d126);
 
-        Assert.Null(d201.Error);
-        Assert.True(d201.IsPending);
+        Assert.Null(d126.Error);
+        Assert.True(d126.IsPending);
         Assert.True(vm.IsPending);
-        Assert.Equal(300, d201.PendingValue);
-        Assert.Contains("D201", d201.ConfirmationText);
-        Assert.Contains("250", d201.ConfirmationText); // old value.
-        Assert.Contains("300", d201.ConfirmationText); // new value.
-        Assert.Contains("Hz", d201.ConfirmationText);  // unit.
-        Assert.Contains("10 ~ 500", d201.ConfirmationText); // allowed range.
+        Assert.Equal(300, d126.PendingValue);
+        Assert.Contains("D126", d126.ConfirmationText);
+        Assert.Contains("250", d126.ConfirmationText); // old value.
+        Assert.Contains("300", d126.ConfirmationText); // new value.
+        Assert.Contains("Hz", d126.ConfirmationText);  // unit.
+        Assert.Contains("10 ~ 500", d126.ConfirmationText); // allowed range.
     }
 
     [Fact]
     public void Confirmation_is_cancelled_without_a_write()
     {
         var (_, client, vm) = Build();
-        var d201 = vm.WritableParameters[0];
-        d201.InputText = "300";
-        vm.PrepareWriteCommand.Execute(d201);
-        Assert.True(d201.IsPending);
+        var d126 = vm.WritableParameters[0]; // D126
+        d126.InputText = "300";
+        vm.PrepareWriteCommand.Execute(d126);
+        Assert.True(d126.IsPending);
 
         vm.CancelWriteCommand.Execute(null);
 
-        Assert.False(d201.IsPending);
+        Assert.False(d126.IsPending);
         Assert.False(vm.IsPending);
         Assert.Empty(client.Writes); // no write was attempted.
     }
@@ -173,16 +173,16 @@ public class ParametersViewModelTests
     public async Task Confirm_write_matching_read_back_reports_success()
     {
         var (_, client, vm) = Build();
-        var d201 = vm.WritableParameters[0];
+        var d126 = vm.WritableParameters[0]; // D126
         vm.ApplySnapshot(LiveSnapshot());
-        d201.InputText = "300";
-        vm.PrepareWriteCommand.Execute(d201);
+        d126.InputText = "300";
+        vm.PrepareWriteCommand.Execute(d126);
 
         await vm.ConfirmWriteCommand.ExecuteAsync(null);
 
-        // The write went to the D201 protocol address (101) and the read-back confirmed it.
-        Assert.Equal(((ushort)101, (ushort)300), client.Writes.Single());
-        Assert.Contains("成功", d201.ResultText);
+        // The write went to the D126 protocol address (26) and the read-back confirmed it.
+        Assert.Equal(((ushort)26, (ushort)300), client.Writes.Single());
+        Assert.Contains("成功", d126.ResultText);
         Assert.False(vm.IsSaving);
         Assert.False(vm.IsPending);
     }
@@ -191,38 +191,38 @@ public class ParametersViewModelTests
     public async Task Staging_a_new_confirmation_clears_a_previous_result()
     {
         var (_, _, vm) = Build();
-        var d201 = vm.WritableParameters[0];
+        var d126 = vm.WritableParameters[0]; // D126
         vm.ApplySnapshot(LiveSnapshot());
-        d201.InputText = "300";
-        vm.PrepareWriteCommand.Execute(d201);
+        d126.InputText = "300";
+        vm.PrepareWriteCommand.Execute(d126);
         await vm.ConfirmWriteCommand.ExecuteAsync(null);
-        Assert.Contains("成功", d201.ResultText);
+        Assert.Contains("成功", d126.ResultText);
 
         // A new valid value stages a fresh confirmation, neutralising the previous read-back outcome.
-        d201.InputText = "350";
-        vm.PrepareWriteCommand.Execute(d201);
+        d126.InputText = "350";
+        vm.PrepareWriteCommand.Execute(d126);
 
-        Assert.Null(d201.ResultText);
-        Assert.True(d201.IsPending);
+        Assert.Null(d126.ResultText);
+        Assert.True(d126.IsPending);
     }
 
     [Fact]
     public async Task Confirm_write_read_back_mismatch_reports_mismatch_and_keeps_original()
     {
         var (_, client, vm) = Build();
-        var d201 = vm.WritableParameters[0];
+        var d126 = vm.WritableParameters[0]; // D126
         vm.ApplySnapshot(LiveSnapshot()); // old 250.
-        d201.InputText = "300";
+        d126.InputText = "300";
         client.OverrideReadBack = 301; // the PLC read back a different value.
-        vm.PrepareWriteCommand.Execute(d201);
+        vm.PrepareWriteCommand.Execute(d126);
 
         await vm.ConfirmWriteCommand.ExecuteAsync(null);
 
-        Assert.Contains("不一致", d201.ResultText);
-        Assert.Contains("已保留原值", d201.ResultText);
+        Assert.Contains("不一致", d126.ResultText);
+        Assert.Contains("已保留原值", d126.ResultText);
         // The write was still attempted (FC06), and the original (snapshot) value is retained on the editor.
-        Assert.Equal(((ushort)101, (ushort)300), client.Writes.Single());
-        Assert.Equal(250, d201.OldValue);
+        Assert.Equal(((ushort)26, (ushort)300), client.Writes.Single());
+        Assert.Equal(250, d126.OldValue);
         Assert.False(vm.IsPending);
     }
 
@@ -230,16 +230,16 @@ public class ParametersViewModelTests
     public async Task Confirm_write_communication_interruption_reports_unknown()
     {
         var (_, client, vm) = Build();
-        var d201 = vm.WritableParameters[0];
-        d201.InputText = "300";
+        var d126 = vm.WritableParameters[0]; // D126
+        d126.InputText = "300";
         client.ThrowOnReadBack = true; // a comms interruption leaves the outcome unverifiable.
-        vm.PrepareWriteCommand.Execute(d201);
+        vm.PrepareWriteCommand.Execute(d126);
 
         await vm.ConfirmWriteCommand.ExecuteAsync(null);
 
-        Assert.Contains("未知", d201.ResultText);
-        Assert.Contains("已保留原值", d201.ResultText);
-        Assert.Equal((ushort)101, client.Writes.Single().Address);
+        Assert.Contains("未知", d126.ResultText);
+        Assert.Contains("已保留原值", d126.ResultText);
+        Assert.Equal((ushort)26, client.Writes.Single().Address);
         Assert.False(vm.IsPending);
     }
 
@@ -247,11 +247,11 @@ public class ParametersViewModelTests
     public async Task Confirm_write_offline_is_rejected_and_keeps_original()
     {
         var (gate, _, vm) = Build();
-        var d201 = vm.WritableParameters[0];
-        vm.ApplySnapshot(LiveSnapshot()); // D201 old value = 250 (retained on a failed write).
-        d201.InputText = "300";
-        vm.PrepareWriteCommand.Execute(d201);
-        Assert.True(d201.IsPending);
+        var d126 = vm.WritableParameters[0]; // D126
+        vm.ApplySnapshot(LiveSnapshot()); // D126 old value = 250 (retained on a failed write).
+        d126.InputText = "300";
+        vm.PrepareWriteCommand.Execute(d126);
+        Assert.True(d126.IsPending);
 
         // The link drops between staging and confirming; the service enforces §5.3 (禁止写入) even though the
         // UI gate would have disabled the confirm button. The English service reason is localised for the HMI.
@@ -259,9 +259,9 @@ public class ParametersViewModelTests
 
         await vm.ConfirmWriteCommand.ExecuteAsync(null);
 
-        Assert.Contains("被拒绝", d201.ResultText);
-        Assert.Contains("通信离线", d201.ResultText);
-        Assert.Equal(250, d201.OldValue); // the original (snapshot) value survives the failed write.
+        Assert.Contains("被拒绝", d126.ResultText);
+        Assert.Contains("通信离线", d126.ResultText);
+        Assert.Equal(250, d126.OldValue); // the original (snapshot) value survives the failed write.
         Assert.False(vm.IsPending);
     }
 
@@ -269,9 +269,9 @@ public class ParametersViewModelTests
     public void Confirm_write_disabled_when_the_link_drops_after_staging()
     {
         var (gate, _, vm) = Build();
-        var d201 = vm.WritableParameters[0];
-        d201.InputText = "300";
-        vm.PrepareWriteCommand.Execute(d201);
+        var d126 = vm.WritableParameters[0]; // D126
+        d126.InputText = "300";
+        vm.PrepareWriteCommand.Execute(d126);
         Assert.True(vm.ConfirmWriteCommand.CanExecute(null));
 
         // The link drops between staging and confirming; ApplyConnectionState re-queries the confirm
@@ -288,10 +288,10 @@ public class ParametersViewModelTests
     public async Task Saving_disables_confirm_and_cancel_until_the_write_completes()
     {
         var (_, client, vm) = Build();
-        var d201 = vm.WritableParameters[0];
+        var d126 = vm.WritableParameters[0]; // D126
         vm.ApplySnapshot(LiveSnapshot());
-        d201.InputText = "300";
-        vm.PrepareWriteCommand.Execute(d201);
+        d126.InputText = "300";
+        vm.PrepareWriteCommand.Execute(d126);
 
         client.HoldWrites = true;
         var inFlight = vm.ConfirmWriteCommand.ExecuteAsync(null);
@@ -305,10 +305,10 @@ public class ParametersViewModelTests
         await inFlight;
 
         Assert.False(vm.IsSaving);
-        Assert.Contains("成功", d201.ResultText);
+        Assert.Contains("成功", d126.ResultText);
     }
 
-    // --- Read-only display (design §6.5: 显示 D203、D210、D212-D213) ----------------------------------
+    // --- Read-only display (design §6.5: 显示 D130、D210、D136、D138、D124、D220) ----------------------------------
 
     [Fact]
     public void Read_only_parameters_display_snapshot_values()
@@ -319,7 +319,7 @@ public class ParametersViewModelTests
         Assert.Collection(vm.ReadOnlyParameters,
             p =>
             {
-                Assert.Equal("D203", p.Key);
+                Assert.Equal("D130", p.Key);
                 Assert.Equal("当前宽度", p.Label);
                 Assert.Equal("mm", p.Unit);
                 Assert.Equal("1200", p.ValueText);
@@ -333,10 +333,31 @@ public class ParametersViewModelTests
             },
             p =>
             {
-                Assert.Equal(RegisterDecoder.WidthPulseCountKey, p.Key); // "D212.D213" composite.
+                Assert.Equal(RegisterDecoder.WidthPulseCountKey, p.Key); // "D136" single.
                 Assert.Equal("调宽脉冲数", p.Label);
                 Assert.Equal("脉冲", p.Unit);
-                Assert.Equal("123456", p.ValueText); // the low-word-first UInt32.
+                Assert.Equal("1234", p.ValueText); // single-word.
+            },
+            p =>
+            {
+                Assert.Equal("D138", p.Key);
+                Assert.Equal("产量计数", p.Label);
+                Assert.Equal(string.Empty, p.Unit);
+                Assert.Equal("5678", p.ValueText); // single-word.
+            },
+            p =>
+            {
+                Assert.Equal(RegisterDecoder.TuningSpeedSetting124Key, p.Key); // "D124"
+                Assert.Equal("调宽速度设定值(D124)", p.Label);
+                Assert.Equal("mm/s", p.Unit);
+                Assert.Null(p.ValueText); // not in LiveSnapshot, value absent.
+            },
+            p =>
+            {
+                Assert.Equal(RegisterDecoder.TuningSpeedSetting220Key, p.Key); // "D220"
+                Assert.Equal("调宽速度设定值(D220)", p.Label);
+                Assert.Equal("mm/s", p.Unit);
+                Assert.Null(p.ValueText); // not in LiveSnapshot, value absent.
             });
     }
 
@@ -353,21 +374,21 @@ public class ParametersViewModelTests
     public void Offline_disables_writes()
     {
         var (_, _, vm) = Build(online: false);
-        var d201 = vm.WritableParameters[0];
+        var d126 = vm.WritableParameters[0]; // D126
 
         Assert.False(vm.IsOnline);
-        Assert.False(vm.PrepareWriteCommand.CanExecute(d201));
+        Assert.False(vm.PrepareWriteCommand.CanExecute(d126));
     }
 
-    /// <summary>Default writable set binding D201/D202/D204/D205 to their protocol addresses (design §4.3),
+    /// <summary>Default writable set binding D126/D128/D204/D122 to their protocol addresses (design §4.3),
     /// matching the App wiring order.</summary>
     private static ParameterDefinition[] Writable()
         => new[]
         {
-            Def("D201", 101, "Hz", 10, 500),
-            Def("D202", 102, "mm", 100, 1500),
+            Def("D126", 26, "Hz", 10, 500),
+            Def("D128", 28, "mm", 100, 1500),
             Def("D204", 104, "脉冲/mm", 1, 1000),
-            Def("D205", 105, "Hz", 10, 1000),
+            Def("D122", 22, "Hz", 10, 1000),
         };
 
     private static ParameterDefinition Def(string name, ushort address, string unit, int min, int max)

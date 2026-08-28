@@ -73,6 +73,9 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _doorBypass;
 
+    [ObservableProperty]
+    private string? _warningText;
+
     /// <summary>
     /// Builds the view model. <paramref name="faultMessages"/> is the loaded K1-K7 fault table
     /// (code → message); an absent code simply leaves <see cref="FaultText"/> null.
@@ -118,7 +121,22 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Human-readable 屏蔽 (bypass) text for the status bar.</summary>
     public string MaskText => LightCurtainBypass || DoorBypass ? "已屏蔽" : "正常";
 
-    partial void OnConnectionStateChanged(ConnectionState value) => OnPropertyChanged(nameof(ConnectionStatusText));
+    /// <summary>True when the link is Online (host writes permitted).</summary>
+    public bool IsOnline => ConnectionState == ConnectionState.Online;
+
+    /// <summary>Yellow-bar warning text: when fault active shows the fault message, otherwise a placeholder tri-level warning.</summary>
+    public string WarningDisplayText => HasFault && !string.IsNullOrEmpty(FaultText)
+        ? FaultText!
+        : !string.IsNullOrEmpty(WarningText)
+            ? WarningText!
+            : IsOnline ? "系统正常 · 无活动警告" : "三级警告: DB400.\"400 Alarm\".Alarm3[4] 离线模式";
+
+    partial void OnConnectionStateChanged(ConnectionState value)
+    {
+        OnPropertyChanged(nameof(ConnectionStatusText));
+        OnPropertyChanged(nameof(IsOnline));
+        OnPropertyChanged(nameof(WarningDisplayText));
+    }
 
     partial void OnHeartbeatChanged(HeartbeatStatus value) => OnPropertyChanged(nameof(HeartbeatText));
 
@@ -129,6 +147,12 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnLightCurtainBypassChanged(bool value) => OnPropertyChanged(nameof(MaskText));
 
     partial void OnDoorBypassChanged(bool value) => OnPropertyChanged(nameof(MaskText));
+
+    partial void OnFaultTextChanged(string? value) => OnPropertyChanged(nameof(WarningDisplayText));
+
+    partial void OnHasFaultChanged(bool value) => OnPropertyChanged(nameof(WarningDisplayText));
+
+    partial void OnWarningTextChanged(string? value) => OnPropertyChanged(nameof(WarningDisplayText));
 
     /// <summary>
     /// Applies an observed link state. The status bar shows 串口状态, so this is the link text.

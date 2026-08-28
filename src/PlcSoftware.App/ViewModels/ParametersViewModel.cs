@@ -173,17 +173,20 @@ public sealed partial class ParametersViewModel : ObservableObject
             _editors.Add(new ParameterEditor(definition));
         }
 
-        _readonlyItems.Add(new ReadOnlyParameter("D203", "当前宽度", "mm"));
+        _readonlyItems.Add(new ReadOnlyParameter("D130", "当前宽度", "mm"));
         _readonlyItems.Add(new ReadOnlyParameter("D210", "调宽差值", string.Empty));
         _readonlyItems.Add(new ReadOnlyParameter(RegisterDecoder.WidthPulseCountKey, "调宽脉冲数", "脉冲"));
+        _readonlyItems.Add(new ReadOnlyParameter("D138", "产量计数", string.Empty));
+        _readonlyItems.Add(new ReadOnlyParameter(RegisterDecoder.TuningSpeedSetting124Key, "调宽速度设定值(D124)", "mm/s"));
+        _readonlyItems.Add(new ReadOnlyParameter(RegisterDecoder.TuningSpeedSetting220Key, "调宽速度设定值(D220)", "mm/s"));
 
         _connectionState = ConnectionState.Disconnected;
     }
 
-    /// <summary>The editable writable parameters (D201/D202/D204/D205).</summary>
+    /// <summary>The editable writable parameters (D126/D128/D204/D122).</summary>
     public IReadOnlyList<ParameterEditor> WritableParameters => _editors;
 
-    /// <summary>The read-only parameters displayed as-is (D203/D210/D212.D213).</summary>
+    /// <summary>The read-only parameters displayed as-is (D130/D210/D136/D138).</summary>
     public IReadOnlyList<ReadOnlyParameter> ReadOnlyParameters => _readonlyItems;
 
     /// <summary>True when the link is Online and host writes are permitted (design §5.3).</summary>

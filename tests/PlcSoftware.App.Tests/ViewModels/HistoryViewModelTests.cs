@@ -42,7 +42,7 @@ public class HistoryViewModelTests
     {
         var (vm, alarms, audits, _) = Build();
         alarms.Add(Alarm(new DateTime(2026, 1, 10), "光栅屏蔽"));
-        audits.Add(Audit(new DateTime(2026, 1, 11), "写入 D201"));
+        audits.Add(Audit(new DateTime(2026, 1, 11), "写入 D126"));
 
         vm.QueryCommand.Execute(null);
 
@@ -114,7 +114,7 @@ public class HistoryViewModelTests
     {
         var (vm, alarms, audits, saved) = Build();
         alarms.Add(Alarm(new DateTime(2026, 1, 10), "急停,屏蔽", "=SUM(A1:A2)"));
-        audits.Add(Audit(new DateTime(2026, 1, 11), "写入 D201", "300"));
+        audits.Add(Audit(new DateTime(2026, 1, 11), "写入 D126", "300"));
 
         // The CSV export flattens AlarmRows/AuditRows (HistoryViewModel.BuildCsv), NOT the injected query
         // delegates. Those collections are populated by Query(), so load them first — mirroring
@@ -128,7 +128,7 @@ public class HistoryViewModelTests
         Assert.Contains("时间,类型,描述,数值", content);
         Assert.Contains("\"急停,屏蔽\"", content);   // quoted comma field.
         Assert.Contains("'=SUM(A1:A2)", content);    // formula-prefix neutralised.
-        Assert.Contains("写入 D201", content);       // Chinese audit description.
+        Assert.Contains("写入 D126", content);       // Chinese audit description.
         Assert.Contains("300", content);
         Assert.Contains("导出完成", vm.StatusText);
         Assert.False(vm.IsBusy);

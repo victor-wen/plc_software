@@ -66,7 +66,6 @@ public class PointMapValidatorTests
 
         Assert.Contains(errors, e => e.Contains("D105", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(errors, e => e.Contains("D106", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(errors, e => e.Contains("D213", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -78,9 +77,8 @@ public class PointMapValidatorTests
             Point("X1", 1),
             Point("Y0", 2),
             Point("M100", 3, writable: true),
-            Point("D105.bit0", 10),
+            Point("D105", 10),
             Point("D106", 11, writable: true),
-            Point("D213", 12),
         };
 
         Assert.Empty(PointMapValidator.Validate(points));
@@ -122,9 +120,8 @@ public class PointMapValidatorTests
         var points = new List<PointDefinition>
         {
             Point(address, 0),
-            Point("D105.bit0", 5),
+            Point("D105", 5),
             Point("D106", 6, writable: true),
-            Point("D213", 7),
         };
 
         var errors = PointMapValidator.Validate(points);
@@ -142,9 +139,8 @@ public class PointMapValidatorTests
         var points = new List<PointDefinition>
         {
             Point(address, 0),
-            Point("D105.bit0", 5),
+            Point("D105", 5),
             Point("D106", 6, writable: true),
-            Point("D213", 7),
         };
 
         var errors = PointMapValidator.Validate(points);
@@ -158,9 +154,8 @@ public class PointMapValidatorTests
     {
         var points = new List<PointDefinition>
         {
-            Point("D105.bit0", 0),
+            Point("D105", 0),
             Point("D106", 1, writable: true),
-            Point("D213", 2),
         };
 
         Assert.Empty(PointMapValidator.Validate(points));

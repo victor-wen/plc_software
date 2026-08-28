@@ -4,16 +4,8 @@ namespace PlcSoftware.Core.Tests.Services;
 
 /// <summary>
 /// Behavioural tests for <see cref="RegisterDecoder"/>: decoding the fast block (D100-D110,
-/// protocol offsets 0-10) and the process block (D200-D213, protocol offsets 100-113) into the
-/// <see cref="Models.DeviceSnapshot.Values"/> shape (keys are logical PLC addresses).
-///
-/// Verified rules:
-///   - the packed M-bit maps decode bit0..bit15 to the mapped M addresses (D100→M0-M15,
-///     D102→M200-M215, D103→M30-M45, D104→M300-M315, D105.bit0→M316);
-///   - the single-word points (heartbeat D101, watchdog echo D106, fault D110 and the process
-///     scalars D200-D205/D210) decode as <see cref="ushort"/>;
-///   - D207+D208 and D212+D213 combine low-word-first into a single <c>uint</c>;
-///   - partial (short or null) register lists are decoded for whatever is present and never throw.
+/// protocol offsets 0-10), the process block (D120-D140, offsets 20-40, 21 regs) and the params
+/// block (D204-D220, offsets 104-120, 17 regs) into <see cref="Models.DeviceSnapshot.Values"/>.
 /// </summary>
 public class RegisterDecoderTests
 {
@@ -88,116 +80,113 @@ public class RegisterDecoderTests
     public void DecodeFast_DecodesSingleWordRegisters_AsUshort()
     {
         var registers = new ushort[11];
-        registers[1] = HeartbeatRegister;     // D101 heartbeat.
         registers[6] = 0x1234;                // D106 watchdog echo.
         registers[10] = 0x0005;               // D110 fault code.
 
         var values = RegisterDecoder.DecodeFast(registers);
 
-        Assert.Equal(HeartbeatRegister, Word(values, "D101"));
         Assert.Equal((ushort)0x1234, Word(values, "D106"));
         Assert.Equal((ushort)0x0005, Word(values, "D110"));
+        Assert.False(values.ContainsKey("D140")); // heartbeat is in process block, not fast.
     }
 
     [Fact]
-    public void DecodeProcess_ComposesD207D208_LowWordFirst()
+    public void DecodeProcess_DecodesSingleWord_ProductionAndPulse()
     {
-        var registers = new ushort[14];
-        registers[7] = 0x1234; // D207 low word.
-        registers[8] = 0xABCD; // D208 high word.
+        var registers = new ushort[21];
+        registers[16] = 0x1234; // D136 width pulse single.
+        registers[18] = 0xABCD; // D138 production single.
 
         var values = RegisterDecoder.DecodeProcess(registers);
 
-        // Low word occupies the least-significant 16 bits: (0xABCD << 16) | 0x1234.
-        Assert.Equal(0xABCD1234u, Dword(values, "D207.D208"));
+        Assert.Equal((ushort)0x1234, Word(values, "D136"));
+        Assert.Equal((ushort)0xABCD, Word(values, "D138"));
+        Assert.Equal("D138", RegisterDecoder.ProductionCountKey);
+        Assert.Equal("D136", RegisterDecoder.WidthPulseCountKey);
     }
 
     [Fact]
-    public void DecodeProcess_ComposesD212D213_LowWordFirst()
+    public void DecodeProcess_DecodesHeartbeat_AtD140()
     {
-        var registers = new ushort[14];
-        registers[12] = 0x0005; // D212 low word.
-        registers[13] = 0x0001; // D213 high word.
+        var registers = new ushort[21];
+        registers[20] = HeartbeatRegister; // D140 heartbeat.
 
         var values = RegisterDecoder.DecodeProcess(registers);
 
-        Assert.Equal(0x10005u, Dword(values, "D212.D213"));
+        Assert.Equal(HeartbeatRegister, Word(values, "D140"));
     }
 
     [Fact]
     public void DecodeProcess_DecodesScalars_AsUshort()
     {
-        var registers = new ushort[14];
-        registers[0] = 3;       // D200 step number.
-        registers[1] = 1000;    // D201 tuning speed.
-        registers[2] = 250;     // D202 target width.
-        registers[3] = 240;     // D203 current width.
-        registers[4] = 50;      // D204 pulse equivalent.
-        registers[5] = 30;      // D205 belt speed.
-        registers[10] = 0x0002; // D210 tuning difference.
+        var registers = new ushort[21];
+        registers[0] = 3;       // D120 step number.
+        registers[2] = 30;      // D122 belt speed.
+        registers[4] = 55;      // D124 tuning speed setting.
+        registers[6] = 1000;    // D126 tuning speed Hz.
+        registers[8] = 250;     // D128 target width.
+        registers[10] = 240;    // D130 current width.
+        registers[16] = 0x0005; // D136 width pulse.
+        registers[18] = 0x0011; // D138 production.
+        registers[20] = 0x0042; // D140 heartbeat.
 
         var values = RegisterDecoder.DecodeProcess(registers);
 
-        Assert.Equal((ushort)3, Word(values, "D200"));
-        Assert.Equal((ushort)1000, Word(values, "D201"));
-        Assert.Equal((ushort)250, Word(values, "D202"));
-        Assert.Equal((ushort)240, Word(values, "D203"));
+        Assert.Equal((ushort)3, Word(values, "D120"));
+        Assert.Equal((ushort)30, Word(values, "D122"));
+        Assert.Equal((ushort)55, Word(values, "D124"));
+        Assert.Equal((ushort)1000, Word(values, "D126"));
+        Assert.Equal((ushort)250, Word(values, "D128"));
+        Assert.Equal((ushort)240, Word(values, "D130"));
+        Assert.Equal((ushort)0x0005, Word(values, "D136"));
+        Assert.Equal((ushort)0x0011, Word(values, "D138"));
+        Assert.Equal(HeartbeatRegister, Word(values, "D140"));
+    }
+
+    [Fact]
+    public void DecodeParams_DecodesScalars_AsUshort()
+    {
+        var registers = new ushort[17];
+        registers[0] = 50;      // D204 pulse equivalent.
+        registers[6] = 0x0002; // D210 tuning difference.
+        registers[16] = 75;     // D220 tuning speed setting.
+
+        var values = RegisterDecoder.DecodeParams(registers);
+
         Assert.Equal((ushort)50, Word(values, "D204"));
-        Assert.Equal((ushort)30, Word(values, "D205"));
         Assert.Equal((ushort)0x0002, Word(values, "D210"));
+        Assert.Equal((ushort)75, Word(values, "D220"));
     }
 
     [Fact]
     public void DecodeFast_MissingRegisters_DecodesWhatIsPresent()
     {
-        // Only D100..D106 are present (indices 0-6); D107-D110 are missing.
         var registers = new ushort[7];
         registers[0] = 0x0001; // D100 → M0.
-        registers[1] = 0x0002; // D101.
         registers[5] = 0x0000; // D105 present → M316 false.
         registers[6] = 0x0003; // D106.
 
         var values = RegisterDecoder.DecodeFast(registers);
 
         Assert.True(Bit(values, "M0"));
-        Assert.Equal((ushort)0x0002, Word(values, "D101"));
         Assert.False(Bit(values, "M316"));
         Assert.Equal((ushort)0x0003, Word(values, "D106"));
-        Assert.False(values.ContainsKey("D110")); // absent register is omitted, not a crash.
-    }
-
-    [Fact]
-    public void DecodeProcess_ComposesOnlyWhenBothWordsPresent()
-    {
-        // Only D207 is present (index 7); D208 (index 8) is out of the block, so no composite.
-        var truncated = new ushort[8];
-        truncated[7] = 0x0055;
-
-        var values = RegisterDecoder.DecodeProcess(truncated);
-
-        Assert.False(values.ContainsKey("D207.D208"));
-
-        // Both words present → composite emitted.
-        var full = new ushort[14];
-        full[7] = 0x0055;
-        full[8] = 0x00AA;
-        Assert.Equal(0x00AA0055u, Dword(RegisterDecoder.DecodeProcess(full), "D207.D208"));
+        Assert.False(values.ContainsKey("D110"));
     }
 
     [Fact]
     public void DecodeProcess_MissingRegisters_DecodesWhatIsPresent()
     {
-        // Indices 0-7 present (D200-D207); index 8 (D208) and above are missing.
         var registers = new ushort[8];
-        registers[0] = 7;         // D200.
-        registers[7] = 0x0055;    // D207 low word present, but D208 high word missing.
+        registers[0] = 7;         // D120.
+        registers[6] = 1000;    // D126 present.
 
         var values = RegisterDecoder.DecodeProcess(registers);
 
-        Assert.Equal((ushort)7, Word(values, "D200"));
-        Assert.False(values.ContainsKey("D207.D208")); // only one of the two words present.
-        Assert.False(values.ContainsKey("D210"));
-        Assert.False(values.ContainsKey("D212.D213"));
+        Assert.Equal((ushort)7, Word(values, "D120"));
+        Assert.Equal((ushort)1000, Word(values, "D126"));
+        Assert.False(values.ContainsKey("D128"));
+        Assert.False(values.ContainsKey("D140"));
     }
 
     [Fact]
@@ -205,18 +194,19 @@ public class RegisterDecoderTests
     {
         Assert.Empty(RegisterDecoder.DecodeFast(null));
         Assert.Empty(RegisterDecoder.DecodeProcess(null));
+        Assert.Empty(RegisterDecoder.DecodeParams(null));
     }
 
     [Fact]
     public void CompositeKeys_ArePublicConstants_WithDesignValues()
     {
-        Assert.Equal("D207.D208", RegisterDecoder.ProductionCountKey);
-        Assert.Equal("D212.D213", RegisterDecoder.WidthPulseCountKey);
+        Assert.Equal("D138", RegisterDecoder.ProductionCountKey);
+        Assert.Equal("D136", RegisterDecoder.WidthPulseCountKey);
+        Assert.Equal("D124", RegisterDecoder.TuningSpeedSetting124Key);
+        Assert.Equal("D220", RegisterDecoder.TuningSpeedSetting220Key);
     }
 
     private static bool Bit(IReadOnlyDictionary<string, object?> values, string key) => (bool)values[key]!;
 
     private static ushort Word(IReadOnlyDictionary<string, object?> values, string key) => (ushort)values[key]!;
-
-    private static uint Dword(IReadOnlyDictionary<string, object?> values, string key) => (uint)values[key]!;
 }

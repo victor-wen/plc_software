@@ -50,4 +50,7 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
+    <!-- 新增语义色别名(供页面/磁贴直接引用, 实际定义在 Colors.xaml / ConfigUiTheme.xaml)。 -->
+    <!-- 警告黄 #FFCC00 / 心跳绿 #00C853 通过 StaticResource 解析到对应 Brush。 -->
+
 </ResourceDictionary>

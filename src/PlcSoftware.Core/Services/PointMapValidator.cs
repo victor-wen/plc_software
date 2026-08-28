@@ -17,9 +17,10 @@ public static class PointMapValidator
 
     /// <summary>
     /// Data registers the supervisory control depends on. D106 is written by the host and
-    /// watched by the PLC; D105.bit0 and D213 are host-project additions ("PLC 新增").
+    /// watched by the PLC; D105 (M316~M331) is the host-project addition ("PLC 新增").
+    /// D213 (old 32-bit high word) has been replaced by single-word D136/D138.
     /// </summary>
-    private static readonly string[] RequiredAddresses = { "D105.bit0", "D106", "D213" };
+    private static readonly string[] RequiredAddresses = { "D105", "D106" };
 
     /// <summary>Returns a list of validation errors, empty when the point map is valid.</summary>
     public static IReadOnlyList<string> Validate(IReadOnlyList<PointDefinition> points)

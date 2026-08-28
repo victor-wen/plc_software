@@ -24,4 +24,11 @@
     <!-- Alarm banner background. -->
     <SolidColorBrush x:Key="AlarmBannerBackgroundBrush" Color="#C62828" />
 
+    <!-- HMI 新增语义色 (dashboard/心跳等状态磁贴): 警告黄 / 心跳绿。 -->
+    <SolidColorBrush x:Key="WarningYellowBrush" Color="#FFCC00" />
+    <SolidColorBrush x:Key="HeartbeatGreenBrush" Color="#00C853" />
+    <!-- 兼容别名: Status* / ConfigUi* 均可取用。 -->
+    <SolidColorBrush x:Key="StatusWarningYellowBrush" Color="#FFCC00" />
+    <SolidColorBrush x:Key="StatusHeartbeatGreenBrush" Color="#00C853" />
+
 </ResourceDictionary>

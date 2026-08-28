@@ -55,12 +55,12 @@ public class AuditContractTests
         var audit = new RecordingAuditLog();
         var service = new ParameterService(client, new FakeGate(), Writable(), auditLog: audit);
 
-        var result = await service.WriteAsync("D201", 250, CancellationToken.None);
+        var result = await service.WriteAsync("D126", 250, CancellationToken.None);
 
         Assert.Equal(ParameterWriteStatus.Success, result.Status);
         var evt = Assert.Single(audit.Events);
         Assert.Equal(AuditCategory.Parameter, evt.Category);
-        Assert.Equal("D201", evt.Target);
+        Assert.Equal("D126", evt.Target);
         Assert.Equal(250, evt.Value);
     }
 
@@ -71,8 +71,8 @@ public class AuditContractTests
         var audit = new RecordingAuditLog();
         var service = new ParameterService(client, new FakeGate(), Writable(), auditLog: audit);
 
-        // D200 is read-only: rejected before any write, so nothing is audited.
-        var result = await service.WriteAsync("D200", 100, CancellationToken.None);
+        // D120 is read-only: rejected before any write, so nothing is audited.
+        var result = await service.WriteAsync("D120", 100, CancellationToken.None);
 
         Assert.Equal(ParameterWriteStatus.Rejected, result.Status);
         Assert.Empty(audit.Events);
@@ -104,12 +104,12 @@ public class AuditContractTests
 
         // A throwing audit implementation must not turn an already-committed 参数 write into a failure;
         // the write is committed and the read-back still confirms it (design audit contract).
-        var result = await service.WriteAsync("D201", 250, CancellationToken.None);
+        var result = await service.WriteAsync("D126", 250, CancellationToken.None);
 
         Assert.Equal(ParameterWriteStatus.Success, result.Status);
         Assert.Equal(250, result.ReadBack);
         Assert.Equal(1, audit.Attempts);
-        Assert.Equal(new[] { ((ushort)101, (ushort)250) }, client.Writes);
+        Assert.Equal(new[] { ((ushort)26, (ushort)250) }, client.Writes);
     }
 
     [Fact]
@@ -207,16 +207,16 @@ public class AuditContractTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    /// <summary>Default writable set binding D201/D202/D204/D205 to their protocol addresses (design §4.3).</summary>
+    /// <summary>Default writable set binding D126/D128/D204/D122 to their protocol addresses (design §4.3).</summary>
     private static ParameterDefinition[] Writable()
         => new[]
         {
-            Def("D201", 101, 10, 500),
-            Def("D202", 102, 100, 1500),
-            Def("D204", 104, 1, 1000),
-            Def("D205", 105, 10, 1000),
+            Def("D126", 26, "Hz", 10, 500),
+            Def("D128", 28, "mm", 100, 1500),
+            Def("D204", 104, "脉冲/mm", 1, 1000),
+            Def("D122", 22, "Hz", 10, 1000),
         };
 
-    private static ParameterDefinition Def(string name, ushort address, int min, int max)
-        => new() { Name = name, Address = address, Unit = "u", Min = min, Max = max };
+    private static ParameterDefinition Def(string name, ushort address, string unit, int min, int max)
+        => new() { Name = name, Address = address, Unit = unit, Min = min, Max = max };
 }
