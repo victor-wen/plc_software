@@ -1,7 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
+using System.Windows.Threading;
 using PlcSoftware.App.ViewModels;
 
 namespace PlcSoftware.App.Views;
@@ -135,37 +138,115 @@ public partial class ConfigurablePageView : UserControl
 
     private UIElement BuildLoginForm(ConfigurablePageViewModel vm)
     {
-        // Title
-        var title = new TextBlock
+        // Root fills the content region with the deep-blue HMI background and centers the card.
+        var root = new Grid
         {
-            Text = "用户登录",
-            Foreground = Res<Brush>("ConfigUiTextBrush"),
-            FontSize = 22,
-            FontWeight = FontWeights.Bold,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 0, 0, 4),
-        };
-        var subtitle = new TextBlock
-        {
-            Text = "请输入账号和密码",
-            Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
-            FontSize = 12,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 0, 0, 20),
+            Background = Res<Brush>("ConfigUiBackgroundBrush"),
         };
 
-        var usernameLabel = new TextBlock
+        // ---- Brand header (logo + title) ---------------------------------------------------
+        var logoText = string.IsNullOrWhiteSpace(vm.HeaderLogo) ? "V" : vm.HeaderLogo.Trim();
+        if (logoText.Length > 4) logoText = logoText[..4];
+        var appTitle = string.IsNullOrWhiteSpace(vm.HeaderTitle) ? "自动化设备" : vm.HeaderTitle;
+
+        var logoCircle = new Border
         {
-            Text = "用户名",
+            Width = 48,
+            Height = 48,
+            CornerRadius = new CornerRadius(24),
+            Background = Res<Brush>("ConfigUiAccentBrush"),
+            Child = new TextBlock
+            {
+                Text = logoText,
+                Foreground = Brushes.White,
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+        var titleStack = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = appTitle,
+            Foreground = Res<Brush>("ConfigUiTextBrush"),
+            FontSize = 20,
+            FontWeight = FontWeights.Bold,
+        });
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = "PLC 上位机监控系统 · 欢迎登录",
             Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
-            FontSize = 12,
+            FontSize = 11,
+            Margin = new Thickness(0, 2, 0, 0),
+        });
+        var brandRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 16) };
+        brandRow.Children.Add(logoCircle);
+        brandRow.Children.Add(titleStack);
+
+        var divider = new Border
+        {
+            Height = 1,
+            Background = Res<Brush>("ConfigUiGridLineBrush"),
+            Opacity = 0.45,
+            Margin = new Thickness(0, 0, 0, 18),
+        };
+
+        var formTitle = new TextBlock
+        {
+            Text = "账号登录",
+            Foreground = Res<Brush>("ConfigUiTextBrush"),
+            FontSize = 16,
+            FontWeight = FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center,
             Margin = new Thickness(0, 0, 0, 4),
+        };
+        var formSubtitle = new TextBlock
+        {
+            Text = "请输入用户名和密码",
+            Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
+            FontSize = 11,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 16),
+        };
+
+        // ---- Helpers for icon fields -------------------------------------------------------
+        static Border MakeFieldBorder(out Grid innerGrid)
+        {
+            innerGrid = new Grid();
+            innerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            innerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            return new Border
+            {
+                CornerRadius = new CornerRadius(8),
+                BorderBrush = (Brush)Application.Current.TryFindResource("ConfigUiGridLineBrush") ?? new SolidColorBrush(Color.FromRgb(0x2A, 0x60, 0x88)),
+                BorderThickness = new Thickness(1),
+                Background = (Brush)Application.Current.TryFindResource("ConfigUiInputBrush") ?? new SolidColorBrush(Color.FromRgb(0x0D, 0x35, 0x56)),
+                Padding = new Thickness(0),
+                Margin = new Thickness(0, 0, 0, 12),
+                Child = innerGrid,
+            };
+        }
+
+        // Username field
+        var userBorder = MakeFieldBorder(out var userGrid);
+        var userIcon = new TextBlock
+        {
+            Text = "👤",
+            FontSize = 14,
+            Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0),
         };
         var username = new TextBox
         {
-            Style = Res<Style>("ConfigUiInputStyle"),
-            MinWidth = 280,
-            Margin = new Thickness(0, 0, 0, 14),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Foreground = Res<Brush>("ConfigUiTextBrush"),
+            CaretBrush = Res<Brush>("ConfigUiTextBrush"),
+            Padding = new Thickness(8, 10, 10, 10),
+            FontSize = 14,
+            VerticalContentAlignment = VerticalAlignment.Center,
         };
         username.SetBinding(TextBox.TextProperty, new Binding(nameof(vm.Username))
         {
@@ -173,138 +254,237 @@ public partial class ConfigurablePageView : UserControl
             Mode = BindingMode.TwoWay,
             UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
         });
+        Grid.SetColumn(userIcon, 0);
+        Grid.SetColumn(username, 1);
+        userGrid.Children.Add(userIcon);
+        userGrid.Children.Add(username);
 
-        var passwordLabel = new TextBlock
+        var userLabel = new TextBlock
         {
-            Text = "密码",
+            Text = "用户名",
             Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
-            FontSize = 12,
-            Margin = new Thickness(0, 0, 0, 4),
+            FontSize = 11,
+            Margin = new Thickness(2, 0, 0, 4),
+        };
+
+        // Password field
+        var pwdBorder = MakeFieldBorder(out var pwdGrid);
+        pwdBorder.Margin = new Thickness(0, 0, 0, 16);
+        var pwdIcon = new TextBlock
+        {
+            Text = "🔒",
+            FontSize = 13,
+            Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0),
         };
         var password = new PasswordBox
         {
-            MinWidth = 280,
-            Margin = new Thickness(0, 0, 0, 16),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Foreground = Res<Brush>("ConfigUiTextBrush"),
+            Padding = new Thickness(8, 10, 10, 10),
+            FontSize = 14,
+            VerticalContentAlignment = VerticalAlignment.Center,
         };
         password.PasswordChanged += (_, _) =>
         {
             vm.Password = password.Password;
             if (!string.IsNullOrEmpty(vm.LoginError))
-            {
                 vm.LoginError = null;
-            }
         };
-        // Keep box in sync when VM clears password after success; needs to be added after
-        // the handler above so the vm.Password reset does not re-enter the first handler incorrectly.
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(vm.Password) && string.IsNullOrEmpty(vm.Password) && password.Password.Length > 0)
-            {
                 password.Password = string.Empty;
-            }
         };
-        // Clear stale error as soon as the user types again.
-        username.TextChanged += (_, _) =>
+        Grid.SetColumn(pwdIcon, 0);
+        Grid.SetColumn(password, 1);
+        pwdGrid.Children.Add(pwdIcon);
+        pwdGrid.Children.Add(password);
+
+        var pwdLabel = new TextBlock
         {
-            if (!string.IsNullOrEmpty(vm.LoginError))
-            {
-                vm.LoginError = null;
-            }
+            Text = "密码",
+            Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
+            FontSize = 11,
+            Margin = new Thickness(2, 0, 0, 4),
         };
 
+        // Focus visuals + clear error on typing
+        void WireFocus(Border border, Control inner)
+        {
+            inner.GotFocus += (_, _) => border.BorderBrush = Res<Brush>("ConfigUiAccentBrush");
+            inner.LostFocus += (_, _) => border.BorderBrush = Res<Brush>("ConfigUiGridLineBrush");
+        }
+        WireFocus(userBorder, username);
+        WireFocus(pwdBorder, password);
+        username.TextChanged += (_, _) =>
+        {
+            if (!string.IsNullOrEmpty(vm.LoginError)) vm.LoginError = null;
+        };
+
+        // Enter to confirm
+        username.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter && vm.LoginConfirmCommand.CanExecute(null))
+                vm.LoginConfirmCommand.Execute(null);
+        };
+        password.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter && vm.LoginConfirmCommand.CanExecute(null))
+                vm.LoginConfirmCommand.Execute(null);
+        };
+
+        // Error banner (icon + text) — collapsed when no error
+        var errorIcon = new TextBlock
+        {
+            Text = "⚠",
+            Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x7A, 0x7A)),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0),
+        };
+        var errorText = new TextBlock
+        {
+            Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x7A, 0x7A)),
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        errorText.SetBinding(TextBlock.TextProperty, new Binding(nameof(vm.LoginError)) { Source = vm });
+        var errorRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+        errorRow.Children.Add(errorIcon);
+        errorRow.Children.Add(errorText);
+        var errorBorder = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0x7A, 0x7A)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x5A, 0x2A, 0x2A)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(10, 7, 10, 7),
+            Margin = new Thickness(0, 2, 0, 10),
+            Visibility = string.IsNullOrEmpty(vm.LoginError) ? Visibility.Collapsed : Visibility.Visible,
+            Child = errorRow,
+        };
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.LoginError))
+                errorBorder.Visibility = string.IsNullOrEmpty(vm.LoginError) ? Visibility.Collapsed : Visibility.Visible;
+        };
+
+        // Confirm button + busy state
         var confirm = new Button
         {
             Content = "登 录",
             Command = vm.LoginConfirmCommand,
             Style = Res<Style>("ConfigUiModuleButtonStyle"),
-            Width = 280,
-            Height = 38,
+            Height = 42,
             FontSize = 15,
+            FontWeight = FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             IsDefault = true,
+            Margin = new Thickness(0, 2, 0, 0),
         };
-        // Enter on either field confirms.
-        username.KeyDown += (_, e) =>
+        void SyncBusy()
         {
-            if (e.Key == System.Windows.Input.Key.Enter && vm.LoginConfirmCommand.CanExecute(null))
-            {
-                vm.LoginConfirmCommand.Execute(null);
-            }
-        };
-        password.KeyDown += (_, e) =>
-        {
-            if (e.Key == System.Windows.Input.Key.Enter && vm.LoginConfirmCommand.CanExecute(null))
-            {
-                vm.LoginConfirmCommand.Execute(null);
-            }
-        };
-
-        var error = new TextBlock
-        {
-            Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x7A, 0x7A)),
-            FontSize = 12,
-            Margin = new Thickness(0, 10, 0, 0),
-            TextWrapping = TextWrapping.Wrap,
-            TextAlignment = TextAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            MinHeight = 18,
-            Visibility = string.IsNullOrEmpty(vm.LoginError) ? Visibility.Collapsed : Visibility.Visible,
-        };
-        error.SetBinding(TextBlock.TextProperty, new Binding(nameof(vm.LoginError)) { Source = vm });
+            var busy = vm.IsActionBusy;
+            confirm.Content = busy ? "登录中…" : "登 录";
+            confirm.IsEnabled = !busy;
+            username.IsEnabled = !busy;
+            password.IsEnabled = !busy;
+            userBorder.Opacity = busy ? 0.7 : 1;
+            pwdBorder.Opacity = busy ? 0.7 : 1;
+        }
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(vm.LoginError))
-            {
-                error.Visibility = string.IsNullOrEmpty(vm.LoginError) ? Visibility.Collapsed : Visibility.Visible;
-            }
+            if (e.PropertyName == nameof(vm.IsActionBusy))
+                SyncBusy();
         };
+        SyncBusy();
 
         var hint = new TextBlock
         {
-            Text = "默认账号 admin / 1234  （可在 config/ui-layout.json 中配置 app.users）",
+            Text = "默认账号  admin / 1234   ·   可在  config/ui-layout.json  配置  app.users",
             Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
-            FontSize = 11,
+            FontSize = 10.5,
             Margin = new Thickness(0, 12, 0, 0),
             TextWrapping = TextWrapping.Wrap,
             TextAlignment = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Opacity = 0.85,
+            Opacity = 0.9,
+        };
+        var footer = new TextBlock
+        {
+            Text = "© VISA  ·  PLC 上位机监控",
+            Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
+            FontSize = 9.5,
+            Opacity = 0.55,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 10, 0, 0),
         };
 
         var form = new StackPanel
         {
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            MinWidth = 280,
+            MinWidth = 300,
         };
-        form.Children.Add(title);
-        form.Children.Add(subtitle);
-        form.Children.Add(usernameLabel);
-        form.Children.Add(username);
-        form.Children.Add(passwordLabel);
-        form.Children.Add(password);
+        form.Children.Add(brandRow);
+        form.Children.Add(divider);
+        form.Children.Add(formTitle);
+        form.Children.Add(formSubtitle);
+        form.Children.Add(userLabel);
+        form.Children.Add(userBorder);
+        form.Children.Add(pwdLabel);
+        form.Children.Add(pwdBorder);
+        form.Children.Add(errorBorder);
         form.Children.Add(confirm);
-        form.Children.Add(error);
         form.Children.Add(hint);
+        form.Children.Add(footer);
 
         var card = new Border
         {
-            Style = Res<Style>("ConfigUiCardStyle"),
-            Child = form,
-            Padding = new Thickness(32, 28, 32, 28),
-            MinWidth = 360,
+            Background = Res<Brush>("ConfigUiPanelBrush"),
+            BorderBrush = Res<Brush>("ConfigUiGridLineBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(14),
+            Padding = new Thickness(28, 24, 28, 22),
+            MinWidth = 380,
             MaxWidth = 420,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
+            Effect = new DropShadowEffect
+            {
+                Color = Color.FromRgb(0x06, 0x1A, 0x2E),
+                BlurRadius = 28,
+                ShadowDepth = 12,
+                Opacity = 0.5,
+                Direction = 270,
+            },
+            Child = form,
         };
 
-        // Center the card on the deep-blue background.
-        return new Grid
+        var centered = new Grid
         {
-            Background = Brushes.Transparent,
-            Children = { card },
-            VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Children = { card },
         };
+        // Center via alignment
+        card.HorizontalAlignment = HorizontalAlignment.Center;
+        card.VerticalAlignment = VerticalAlignment.Center;
+        // Slight outer margin so shadow is not clipped
+        card.Margin = new Thickness(24);
+
+        // Auto-focus username after the card is loaded
+        root.Loaded += (_, _) =>
+            root.Dispatcher.BeginInvoke(() =>
+            {
+                username.Focus();
+                Keyboard.Focus(username);
+            }, DispatcherPriority.Loaded);
+
+        root.Children.Add(centered);
+        return root;
     }
 
     private UIElement BuildParameterGroups(ConfigurablePageViewModel vm)

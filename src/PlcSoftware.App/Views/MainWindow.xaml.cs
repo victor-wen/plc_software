@@ -287,8 +287,15 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
         };
         ConfigNavItems.Children.Add(separator);
 
+        var loginPageId = LoginPageId();
         foreach (var page in layout.Pages)
         {
+            // 登录页永不进顶栏导航：登录前顶栏本就隐藏，登录后更不应再出现“登录”入口。
+            if (page.Id == loginPageId)
+            {
+                continue;
+            }
+
             var button = new Button
             {
                 Content = string.IsNullOrWhiteSpace(page.Title) ? page.Id : page.Title,
@@ -341,9 +348,16 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
             return;
         }
 
+        var loginPage = LoginPageId();
+
+        // 登录后禁止再回到登录页：登录页已从顶栏移除，编程式跳转也拦住。
+        if (_isSignedIn && pageId == loginPage)
+        {
+            return;
+        }
+
         // Sign-in gate (design §7 登录机制): while the shell requires login and the visitor is not
         // signed in, every page except the sign-in page redirects to the sign-in page.
-        var loginPage = LoginPageId();
         if (_configLayout.App.LoginRequired && !_isSignedIn
             && (pageId != loginPage || loginPage is null))
         {
@@ -368,9 +382,27 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
         }
 
         ReleaseManualJogsOnSwitch();
-        if (_configHistory.Count == 0 || _configHistory[^1] != pageId)
+        // 登录页不进历史：登录后 Back/Up/Down 永远回不到登录页。
+        var loginPageHistory = LoginPageId();
+        if (pageId == loginPageHistory)
         {
-            _configHistory.Add(pageId);
+            if (_configHistory.Count == 0 || _configHistory[^1] != pageId)
+            {
+                _configHistory.Add(pageId);
+            }
+        }
+        else
+        {
+            // 新页面落地时抹掉历史中残留的登录页，彻底切断回退链路。
+            if (loginPageHistory is not null)
+            {
+                _configHistory.RemoveAll(id => id == loginPageHistory);
+            }
+
+            if (_configHistory.Count == 0 || _configHistory[^1] != pageId)
+            {
+                _configHistory.Add(pageId);
+            }
         }
 
         if (!_configPageVms.TryGetValue(pageId, out var vm))
@@ -437,13 +469,27 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
             return;
         }
 
-        var index = _configLayout.Pages.FindIndex(p => p.Id == CurrentConfigPageId());
+        var loginPage = LoginPageId();
+        var current = CurrentConfigPageId();
+        var index = _configLayout.Pages.FindIndex(p => p.Id == current);
         if (index <= 0)
         {
             return;
         }
 
-        Navigate(_configLayout.Pages[index - 1].Id);
+        // 已登录后 Up 跳过登录页。
+        var prev = index - 1;
+        while (prev >= 0 && _isSignedIn && _configLayout.Pages[prev].Id == loginPage)
+        {
+            prev--;
+        }
+
+        if (prev < 0)
+        {
+            return;
+        }
+
+        Navigate(_configLayout.Pages[prev].Id);
     }
 
     /// <inheritdoc />
@@ -454,13 +500,26 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
             return;
         }
 
-        var index = _configLayout.Pages.FindIndex(p => p.Id == CurrentConfigPageId());
+        var loginPage = LoginPageId();
+        var current = CurrentConfigPageId();
+        var index = _configLayout.Pages.FindIndex(p => p.Id == current);
         if (index < 0 || index >= _configLayout.Pages.Count - 1)
         {
             return;
         }
 
-        Navigate(_configLayout.Pages[index + 1].Id);
+        var next = index + 1;
+        while (next < _configLayout.Pages.Count && _isSignedIn && _configLayout.Pages[next].Id == loginPage)
+        {
+            next++;
+        }
+
+        if (next >= _configLayout.Pages.Count)
+        {
+            return;
+        }
+
+        Navigate(_configLayout.Pages[next].Id);
     }
 
     /// <inheritdoc />
@@ -471,7 +530,19 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
             return;
         }
 
+        var loginPage = LoginPageId();
         _configHistory.RemoveAt(_configHistory.Count - 1);
+        // 登录后 Back 跳过登录页（并把历史里的登录痕迹清掉）。
+        while (_configHistory.Count > 0 && _isSignedIn && _configHistory[^1] == loginPage)
+        {
+            _configHistory.RemoveAt(_configHistory.Count - 1);
+        }
+
+        if (_configHistory.Count == 0)
+        {
+            return;
+        }
+
         Navigate(_configHistory[^1]);
     }
 

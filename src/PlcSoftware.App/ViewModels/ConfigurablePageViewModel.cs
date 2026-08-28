@@ -165,6 +165,12 @@ public sealed partial class ConfigurablePageViewModel : ObservableObject
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(Username) || string.IsNullOrWhiteSpace(Password))
+        {
+            LoginError = "请输入用户名和密码。";
+            return;
+        }
+
         var users = _layout.App.Users;
         var accepted = users.Count == 0
             ? true // no credentials configured (simulation): accept anything.
