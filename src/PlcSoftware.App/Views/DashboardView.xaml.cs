@@ -79,8 +79,8 @@ public partial class DashboardView : UserControl
 
         var cell = new Border
         {
-            Background = ParseColor(tile.Color) ?? (Brush)FindResource("ConfigUiTileBrush"),
-            BorderBrush = (Brush)FindResource("ConfigUiGridLineBrush"),
+            Background = ParseColor(tile.Color) ?? Safe<Brush>("ConfigUiTileBrush"),
+            BorderBrush = Safe<Brush>("ConfigUiGridLineBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Child = content,
@@ -92,7 +92,7 @@ public partial class DashboardView : UserControl
         if (_viewModel is { IsEditing: true })
         {
             cell.BorderThickness = new Thickness(2);
-            cell.BorderBrush = (Brush)FindResource("ConfigUiAccentBrush");
+            cell.BorderBrush = Safe<Brush>("ConfigUiAccentBrush");
             ((Border)cell.Child).Margin = new Thickness(0, 24, 0, 0);
             var stacked = new StackPanel();
             stacked.Children.Add(BuildTileEditor(tile));
@@ -112,7 +112,7 @@ public partial class DashboardView : UserControl
         {
             Content = tile.Text,
             Command = tile.ClickCommand,
-            Style = (Style)FindResource("ConfigUiModuleButtonStyle"),
+            Style = Safe<Style>("ConfigUiModuleButtonStyle"),
             Margin = new Thickness(0),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
@@ -124,13 +124,13 @@ public partial class DashboardView : UserControl
     {
         var border = new Border
         {
-            Background = (Brush)FindResource("ConfigUiButtonBrush"),
+            Background = Safe<Brush>("ConfigUiButtonBrush"),
             CornerRadius = new CornerRadius(6),
             Child = new Button
             {
                 Content = "→ " + tile.Text,
                 Command = tile.ClickCommand,
-                Foreground = (Brush)FindResource("ConfigUiTextBrush"),
+                Foreground = Safe<Brush>("ConfigUiTextBrush"),
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 FontSize = 15,
@@ -147,7 +147,7 @@ public partial class DashboardView : UserControl
         var label = new TextBlock
         {
             Text = tile.Text,
-            Foreground = (Brush)FindResource("ConfigUiMutedTextBrush"),
+            Foreground = Safe<Brush>("ConfigUiMutedTextBrush"),
             FontSize = 14,
             Margin = new Thickness(0, 0, 0, 6),
         };
@@ -155,7 +155,7 @@ public partial class DashboardView : UserControl
         {
             FontSize = 26,
             FontWeight = FontWeights.Bold,
-            Foreground = (Brush)FindResource("ConfigUiTextBrush"),
+            Foreground = Safe<Brush>("ConfigUiTextBrush"),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -172,7 +172,7 @@ public partial class DashboardView : UserControl
         var label = new TextBlock
         {
             Text = tile.Text,
-            Foreground = (Brush)FindResource("ConfigUiMutedTextBrush"),
+            Foreground = Safe<Brush>("ConfigUiMutedTextBrush"),
             FontSize = 14,
             Margin = new Thickness(0, 0, 0, 6),
         };
@@ -180,7 +180,7 @@ public partial class DashboardView : UserControl
         {
             FontSize = 22,
             FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)FindResource("ConfigUiAccentBrush"),
+            Foreground = Safe<Brush>("ConfigUiAccentBrush"),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -197,7 +197,7 @@ public partial class DashboardView : UserControl
         return new TextBlock
         {
             Text = tile.Text,
-            Foreground = (Brush)FindResource("ConfigUiTextBrush"),
+            Foreground = Safe<Brush>("ConfigUiTextBrush"),
             FontSize = 18,
             FontWeight = FontWeights.SemiBold,
             TextWrapping = TextWrapping.Wrap,
@@ -225,13 +225,13 @@ public partial class DashboardView : UserControl
 
         if (tile.Kind is UiTileKind.Button)
         {
-            var text = new TextBox { Text = tile.Text, Style = (Style)FindResource("ConfigUiInputStyle"), MinWidth = 90, FontSize = 12 };
+            var text = new TextBox { Text = tile.Text, Style = Safe<Style>("ConfigUiInputStyle"), MinWidth = 90, FontSize = 12 };
             text.TextChanged += (_, _) => tile.Text = text.Text;
             var targets = new ComboBox
             {
                 ItemsSource = CommandTargetNames,
                 SelectedItem = tile.Target,
-                Style = (Style)FindResource("ConfigUiComboStyle"),
+                Style = Safe<Style>("ConfigUiComboStyle"),
                 MinWidth = 110,
             };
             targets.SelectionChanged += (_, _) =>
@@ -243,7 +243,7 @@ public partial class DashboardView : UserControl
             {
                 Content = "值=1",
                 IsChecked = tile.TargetValue,
-                Foreground = (Brush)FindResource("ConfigUiTextBrush"),
+                Foreground = Safe<Brush>("ConfigUiTextBrush"),
                 IsThreeState = false,
             };
             targetValue.Checked += (_, _) => { tile.TargetValue = true; tile.CommitEdit(); };
@@ -260,13 +260,13 @@ public partial class DashboardView : UserControl
 
         if (tile.Kind == UiTileKind.Navigate)
         {
-            var text = new TextBox { Text = tile.Text, Style = (Style)FindResource("ConfigUiInputStyle"), MinWidth = 90, FontSize = 12 };
+            var text = new TextBox { Text = tile.Text, Style = Safe<Style>("ConfigUiInputStyle"), MinWidth = 90, FontSize = 12 };
             text.TextChanged += (_, _) => tile.Text = text.Text;
             var pages = new ComboBox
             {
                 ItemsSource = _viewModel!.Pages,
                 SelectedItem = tile.Page,
-                Style = (Style)FindResource("ConfigUiComboStyle"),
+                Style = Safe<Style>("ConfigUiComboStyle"),
                 MinWidth = 110,
                 DisplayMemberPath = "Title",
             };
@@ -293,7 +293,7 @@ public partial class DashboardView : UserControl
             {
                 ItemsSource = Enum.GetNames<UiTileStatus>(),
                 SelectedItem = tile.StatusKind?.ToString(),
-                Style = (Style)FindResource("ConfigUiComboStyle"),
+                Style = Safe<Style>("ConfigUiComboStyle"),
                 MinWidth = 130,
             };
             statuses.SelectionChanged += (_, _) =>
@@ -305,7 +305,7 @@ public partial class DashboardView : UserControl
                 }
             };
             var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            row.Children.Add(new TextBlock { Text = "状态：", Foreground = (Brush)FindResource("ConfigUiMutedTextBrush"), VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = "状态：", Foreground = Safe<Brush>("ConfigUiMutedTextBrush"), VerticalAlignment = VerticalAlignment.Center });
             row.Children.Add(statuses);
             var wrap = new StackPanel { Orientation = Orientation.Vertical };
             wrap.Children.Add(strip);
@@ -318,9 +318,24 @@ public partial class DashboardView : UserControl
 
     private Button MiniButton(string content, System.Action onClick)
     {
-        var button = new Button { Content = content, Style = (Style)FindResource("ConfigUiMiniButtonStyle") };
+        var button = new Button { Content = content, Style = Safe<Style>("ConfigUiMiniButtonStyle") };
         button.Click += (_, _) => onClick();
         return button;
+    }
+
+    private T Safe<T>(string key) where T : class
+    {
+        //  ConfigUiTheme 在 Application 级，UserControl/DashboardView 的本地字典可能找不到；
+        //  TryFindResource 向上遍历逻辑树+应用资源，失败则给兜底实例，避免 KeyNotFoundException 闪退。
+        if (TryFindResource(key) is T f) return f;
+        if (Application.Current != null)
+        {
+            var r = Application.Current.TryFindResource(key);
+            if (r is T f2) return f2;
+        }
+        if (typeof(T) == typeof(Brush)) return (T)(object)new SolidColorBrush(Color.FromRgb(0x2A, 0x60, 0x88));
+        if (typeof(T) == typeof(Style)) return (T)(object)new Style();
+        throw new KeyNotFoundException($"Resource '{key}' not found.");
     }
 
     private void StartClockTimer()

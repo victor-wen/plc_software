@@ -27,18 +27,79 @@ public partial class App : Application
 {
     private IHost? _host;
 
+    private SingleInstanceGuard? _instanceGuard;
+
     protected override void OnStartup(StartupEventArgs e)
     {
+        // 记录崩溃日志（不阻断崩溃路径，仅落盘）
+        var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
+        try { CrashReporter.Attach(logDir); } catch { }
+
+        // 全局未处理异常 -> 落盘 + 弹框（避免直接闪退无信息）
+        DispatcherUnhandledException += (_, args) =>
+        {
+            try { CrashReporter.Record(DateTime.Now, args.Exception, logDir); } catch { }
+            try
+            {
+                MessageBox.Show(
+                    $"发生未处理异常：{args.Exception.Message}\n\n详情已写入 {logDir}\n\n{args.Exception}",
+                    "PLC 上位机",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            catch { }
+            args.Handled = true;
+            try { Shutdown(1); } catch { }
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            try { CrashReporter.Record(DateTime.Now, args.ExceptionObject as Exception, logDir); } catch { }
+        };
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            try { CrashReporter.Record(DateTime.Now, args.Exception, logDir); } catch { }
+            args.SetObserved();
+        };
+
+        // 单实例：第二实例直接提示后退出，避免串口争用
+        try
+        {
+            _instanceGuard = new SingleInstanceGuard("Global\\PlcSoftware.SingleInstance");
+            if (!_instanceGuard.TryAcquire())
+            {
+                MessageBox.Show("程序已在运行中。", "PLC 上位机", MessageBoxButton.OK, MessageBoxImage.Information);
+                Shutdown(0);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            try { CrashReporter.Record(DateTime.Now, ex, logDir); } catch { }
+            // 单实例本身异常不阻断启动
+        }
+
         base.OnStartup(e);
 
-        _host = Host.CreateDefaultBuilder()
-            .ConfigureLogging(logging => logging.ClearProviders())
-            .ConfigureServices(ConfigureServices)
-            .Build();
+        try
+        {
+            _host = Host.CreateDefaultBuilder()
+                .ConfigureLogging(logging => logging.ClearProviders())
+                .ConfigureServices(ConfigureServices)
+                .Build();
 
-        // Start the Generic Host: this launches the PlcRuntime hosted service (connection-supervision,
-        // polling and D106 watchdog loops) and the SimulationScenarioDriver (demo scenario replay).
-        _host.Start();
+            // Start the Generic Host: this launches the PlcRuntime hosted service (connection-supervision,
+            // polling and D106 watchdog loops) and the SimulationScenarioDriver (demo scenario replay).
+            _host.Start();
+        }
+        catch (Exception ex)
+        {
+            try { CrashReporter.Record(DateTime.Now, ex, logDir); } catch { }
+            MessageBox.Show(
+                $"启动失败：{ex.Message}\n\n日志：{logDir}\n\n{ex}",
+                "PLC 上位机",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+            return;
+        }
 
         // Wire the state fan-out to the view model. The view model stays UI-thread-free; updates are
         // marshalled to the application dispatcher so WPF bindings observe the changes on the UI thread.
@@ -126,8 +187,9 @@ public partial class App : Application
     {
         // Joining and disposing the host is best-effort on app exit so a slow background loop cannot
         // hang shutdown indefinitely.
-        _host?.StopAsync().GetAwaiter().GetResult();
-        _host?.Dispose();
+        try { _host?.StopAsync().GetAwaiter().GetResult(); } catch { }
+        try { _host?.Dispose(); } catch { }
+        try { _instanceGuard?.Dispose(); } catch { }
         base.OnExit(e);
     }
 
@@ -140,9 +202,53 @@ public partial class App : Application
         // Load the K1-K7 fault table (drives AlarmService and the view model's fault text).
         var configDir = Path.Combine(AppContext.BaseDirectory, "config");
         var loader = new JsonConfigurationLoader();
-        var faults = loader.LoadFaults(Path.Combine(configDir, "faults.json"));
-        var serialOptions = loader.LoadSerialOptions(Path.Combine(configDir, "appsettings.json"));
-        var pointMap = loader.LoadPointMap(Path.Combine(configDir, "point-map.simulation.json"));
+        IReadOnlyList<FaultDefinition> faults = Array.Empty<FaultDefinition>();
+        SerialConnectionOptions serialOptions = new SerialConnectionOptions();
+        IReadOnlyList<PointDefinition> pointMap = Array.Empty<PointDefinition>();
+        var logDirForConfig = Path.Combine(AppContext.BaseDirectory, "logs");
+        try
+        {
+            faults = loader.LoadFaults(Path.Combine(configDir, "faults.json"));
+        }
+        catch (Exception ex)
+        {
+            try { CrashReporter.Record(DateTime.Now, ex, logDirForConfig); } catch { }
+            // 故障表缺失不闪退：用空表（D110 仍显示故障码数字），后续弹窗已在 OnStartup 外层兜住
+            faults = Array.Empty<FaultDefinition>();
+            try
+            {
+                MessageBox.Show($"faults.json 加载失败，已用空表启动。\n{ex.Message}\n\n日志：{logDirForConfig}", "PLC 上位机", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            catch { }
+        }
+        try
+        {
+            serialOptions = loader.LoadSerialOptions(Path.Combine(configDir, "appsettings.json"));
+        }
+        catch (Exception ex)
+        {
+            try { CrashReporter.Record(DateTime.Now, ex, logDirForConfig); } catch { }
+            serialOptions = new SerialConnectionOptions();
+            try
+            {
+                MessageBox.Show($"appsettings.json 加载失败，已用默认串口配置启动。\n{ex.Message}\n\n日志：{logDirForConfig}", "PLC 上位机", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            catch { }
+        }
+        try
+        {
+            pointMap = loader.LoadPointMap(Path.Combine(configDir, "point-map.simulation.json"));
+        }
+        catch (Exception ex)
+        {
+            try { CrashReporter.Record(DateTime.Now, ex, logDirForConfig); } catch { }
+            pointMap = Array.Empty<PointDefinition>();
+            try
+            {
+                MessageBox.Show($"point-map.simulation.json 加载失败，I/O 诊断为空。\n{ex.Message}\n\n日志：{logDirForConfig}", "PLC 上位机", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            catch { }
+        }
 
         // Modbus transport: in-memory simulation behind the shared single-flight queue (design §5.1). The
         // concrete InMemoryModbusClient is registered so the demo scenario runner can drive its memory

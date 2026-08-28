@@ -211,7 +211,7 @@ public partial class ConfigurablePageView : UserControl
         };
 
         // ---- Helpers for icon fields -------------------------------------------------------
-        static Border MakeFieldBorder(out Grid innerGrid)
+        Border MakeFieldBorder(out Grid innerGrid)
         {
             innerGrid = new Grid();
             innerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -219,9 +219,9 @@ public partial class ConfigurablePageView : UserControl
             return new Border
             {
                 CornerRadius = new CornerRadius(8),
-                BorderBrush = (Brush)Application.Current.TryFindResource("ConfigUiGridLineBrush") ?? new SolidColorBrush(Color.FromRgb(0x2A, 0x60, 0x88)),
+                BorderBrush = Res<Brush>("ConfigUiGridLineBrush"),
                 BorderThickness = new Thickness(1),
-                Background = (Brush)Application.Current.TryFindResource("ConfigUiInputBrush") ?? new SolidColorBrush(Color.FromRgb(0x0D, 0x35, 0x56)),
+                Background = Res<Brush>("ConfigUiInputBrush"),
                 Padding = new Thickness(0),
                 Margin = new Thickness(0, 0, 0, 12),
                 Child = innerGrid,
@@ -475,13 +475,20 @@ public partial class ConfigurablePageView : UserControl
         // Slight outer margin so shadow is not clipped
         card.Margin = new Thickness(24);
 
-        // Auto-focus username after the card is loaded
+        // Auto-focus username after the card is loaded (defensive: can be null during shutdown/test)
         root.Loaded += (_, _) =>
-            root.Dispatcher.BeginInvoke(() =>
+        {
+            try
             {
-                username.Focus();
-                Keyboard.Focus(username);
-            }, DispatcherPriority.Loaded);
+                var d = root.Dispatcher;
+                if (d == null) return;
+                d.BeginInvoke((Action)(() =>
+                {
+                    try { username.Focus(); Keyboard.Focus(username); } catch { }
+                }), DispatcherPriority.Loaded);
+            }
+            catch { }
+        };
 
         root.Children.Add(centered);
         return root;
@@ -582,5 +589,33 @@ public partial class ConfigurablePageView : UserControl
     }
 
     private T Res<T>(string key) where T : class
-        => (T)Resources[key];
+    {
+        //  ConfigUiTheme 合并在 Application 级，UserControl.Resources 找不到时要向上走到 Application 。
+        //  之前直接 (T)Resources[key] 会在资源不在本地字典时抛 KeyNotFoundException，导致启动闪退。
+        if (TryFindResource(key) is T found)
+        {
+            return found;
+        }
+
+        if (Application.Current != null)
+        {
+            var appRes = Application.Current.TryFindResource(key);
+            if (appRes is T found2) return found2;
+        }
+
+        if (Resources.Contains(key) && Resources[key] is T found3) return found3;
+
+        // 兜底：给常见类型一个可用的默认实例，避免调用方因 null 崩溃
+        if (typeof(T) == typeof(Brush))
+        {
+            return (T)(object)new SolidColorBrush(Color.FromRgb(0x1E, 0x6F, 0xB8));
+        }
+
+        if (typeof(T) == typeof(Style))
+        {
+            return (T)(object)new Style();
+        }
+
+        throw new KeyNotFoundException($"Resource '{key}' not found.");
+    }
 }

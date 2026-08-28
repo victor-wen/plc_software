@@ -268,46 +268,92 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
     /// button per page plus the default page shown in the page host.</summary>
     private void SetupConfigurablePages()
     {
-        var layoutPath = Path.Combine(AppContext.BaseDirectory, "config", "ui-layout.json");
-        var layout = UiLayoutLoader.TryLoadFromFile(layoutPath);
-        if (layout is null)
+        try
         {
-            return; // legacy hand-written navigation stays in charge.
-        }
-
-        _configLayout = layout;
-
-        var separator = new Border
-        {
-            Width = 1,
-            Height = 20,
-            Background = (Brush)TryFindResource("InverseForegroundBrush") ?? System.Windows.Media.Brushes.Gray,
-            Margin = new Thickness(8, 0, 8, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        ConfigNavItems.Children.Add(separator);
-
-        var loginPageId = LoginPageId();
-        foreach (var page in layout.Pages)
-        {
-            // 登录页永不进顶栏导航：登录前顶栏本就隐藏，登录后更不应再出现“登录”入口。
-            if (page.Id == loginPageId)
+            var layoutPath = Path.Combine(AppContext.BaseDirectory, "config", "ui-layout.json");
+            UiLayoutDefinition? layout;
+            try
             {
-                continue;
+                layout = UiLayoutLoader.TryLoadFromFile(layoutPath);
+            }
+            catch (Exception ex)
+            {
+                var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
+                try { PlcSoftware.App.Services.CrashReporter.Record(DateTime.Now, ex, logDir); } catch { }
+                try
+                {
+                    MessageBox.Show(
+                        $"ui-layout.json 加载失败，已回退到传统导航。\n{ex.Message}\n\n日志：{logDir}\n文件：{layoutPath}",
+                        "PLC 上位机", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                catch { }
+                return; // legacy hand-written navigation stays in charge.
             }
 
-            var button = new Button
+            if (layout is null)
             {
-                Content = string.IsNullOrWhiteSpace(page.Title) ? page.Id : page.Title,
-                Style = (Style)TryFindResource("NavButtonStyle"),
-            };
-            var pageId = page.Id;
-            button.Click += (_, _) => Navigate(pageId);
-            ConfigNavItems.Children.Add(button);
-        }
+                return; // legacy hand-written navigation stays in charge.
+            }
 
-        UpdateGateUi();
-        Navigate(layout.DefaultPage.Id);
+            _configLayout = layout;
+
+            var separator = new Border
+            {
+                Width = 1,
+                Height = 20,
+                Background = TryFindResource("InverseForegroundBrush") as Brush ?? System.Windows.Media.Brushes.Gray,
+                Margin = new Thickness(8, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            ConfigNavItems.Children.Add(separator);
+
+            var loginPageId = LoginPageId();
+            foreach (var page in layout.Pages)
+            {
+                // 登录页永不进顶栏导航：登录前顶栏本就隐藏，登录后更不应再出现“登录”入口。
+                if (page.Id == loginPageId)
+                {
+                    continue;
+                }
+
+                var button = new Button
+                {
+                    Content = string.IsNullOrWhiteSpace(page.Title) ? page.Id : page.Title,
+                    Style = TryFindResource("NavButtonStyle") as Style,
+                };
+                var pageId = page.Id;
+                button.Click += (_, _) => Navigate(pageId);
+                ConfigNavItems.Children.Add(button);
+            }
+
+            UpdateGateUi();
+            try
+            {
+                Navigate(layout.DefaultPage.Id);
+            }
+            catch (Exception ex)
+            {
+                var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
+                try { PlcSoftware.App.Services.CrashReporter.Record(DateTime.Now, ex, logDir); } catch { }
+                try
+                {
+                    MessageBox.Show($"初始导航失败：{ex.Message}\n\n日志：{logDir}", "PLC 上位机",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
+            try { PlcSoftware.App.Services.CrashReporter.Record(DateTime.Now, ex, logDir); } catch { }
+            try
+            {
+                MessageBox.Show($"配置界面初始化失败：{ex.Message}\n\n日志：{logDir}", "PLC 上位机",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            catch { }
+        }
     }
 
     /// <summary>True while the configurable login gate is active (login required and not yet signed in).</summary>
