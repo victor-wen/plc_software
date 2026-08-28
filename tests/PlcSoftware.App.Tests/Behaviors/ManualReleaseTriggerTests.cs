@@ -98,6 +98,10 @@ public class ManualReleaseTriggerTests
             {
                 Source = new Uri("pack://application:,,,/PlcSoftware.App;component/Resources/Controls.xaml"),
             });
+            app.Resources.MergedDictionaries.Add(new ResourceDictionary
+            {
+                Source = new Uri("pack://application:,,,/PlcSoftware.App;component/Resources/ConfigUiTheme.xaml"),
+            });
             app.Resources["BooleanToVisibilityConverter"] = new BooleanToVisibilityConverter();
 
             // Force the deferred BAML content to materialize on this thread (see method doc).
