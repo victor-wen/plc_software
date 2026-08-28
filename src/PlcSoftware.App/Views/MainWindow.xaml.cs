@@ -688,9 +688,9 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
             if (leftBorder != null) leftBorder.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
             var rightBorder = RightCommandPanel?.Parent as Border;
             if (rightBorder != null) rightBorder.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
-            var bottomBorder = BottomTabPanel?.Parent?.Parent as Border;
+            var bottomBorder = (BottomTabPanel?.Parent as FrameworkElement)?.Parent as Border;
             // BottomTabPanel 在 ScrollViewer 内，ScrollViewer 在 Border 内
-            if (bottomBorder is null && BottomTabPanel?.Parent is ScrollViewer sv) bottomBorder = sv.Parent as Border;
+            if (bottomBorder is null && BottomTabPanel?.Parent is ScrollViewer sv2) bottomBorder = (sv2.Parent as FrameworkElement) as Border;
             if (bottomBorder != null) bottomBorder.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
         }
         catch { }
