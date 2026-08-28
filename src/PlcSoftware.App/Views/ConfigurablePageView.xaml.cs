@@ -135,11 +135,37 @@ public partial class ConfigurablePageView : UserControl
 
     private UIElement BuildLoginForm(ConfigurablePageViewModel vm)
     {
+        // Title
+        var title = new TextBlock
+        {
+            Text = "用户登录",
+            Foreground = Res<Brush>("ConfigUiTextBrush"),
+            FontSize = 22,
+            FontWeight = FontWeights.Bold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+        var subtitle = new TextBlock
+        {
+            Text = "请输入账号和密码",
+            Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
+            FontSize = 12,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 20),
+        };
+
+        var usernameLabel = new TextBlock
+        {
+            Text = "用户名",
+            Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
         var username = new TextBox
         {
             Style = Res<Style>("ConfigUiInputStyle"),
-            MinWidth = 260,
-            Margin = new Thickness(0, 4, 0, 8),
+            MinWidth = 280,
+            Margin = new Thickness(0, 0, 0, 14),
         };
         username.SetBinding(TextBox.TextProperty, new Binding(nameof(vm.Username))
         {
@@ -148,39 +174,137 @@ public partial class ConfigurablePageView : UserControl
             UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
         });
 
+        var passwordLabel = new TextBlock
+        {
+            Text = "密码",
+            Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
         var password = new PasswordBox
         {
-            MinWidth = 260,
-            Margin = new Thickness(0, 4, 0, 12),
+            MinWidth = 280,
+            Margin = new Thickness(0, 0, 0, 16),
         };
-        password.PasswordChanged += (_, _) => vm.Password = password.Password;
+        password.PasswordChanged += (_, _) =>
+        {
+            vm.Password = password.Password;
+            if (!string.IsNullOrEmpty(vm.LoginError))
+            {
+                vm.LoginError = null;
+            }
+        };
+        // Keep box in sync when VM clears password after success; needs to be added after
+        // the handler above so the vm.Password reset does not re-enter the first handler incorrectly.
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.Password) && string.IsNullOrEmpty(vm.Password) && password.Password.Length > 0)
+            {
+                password.Password = string.Empty;
+            }
+        };
+        // Clear stale error as soon as the user types again.
+        username.TextChanged += (_, _) =>
+        {
+            if (!string.IsNullOrEmpty(vm.LoginError))
+            {
+                vm.LoginError = null;
+            }
+        };
 
         var confirm = new Button
         {
-            Content = "确认",
+            Content = "登 录",
             Command = vm.LoginConfirmCommand,
             Style = Res<Style>("ConfigUiModuleButtonStyle"),
-            Width = 180,
+            Width = 280,
+            Height = 38,
+            FontSize = 15,
+            IsDefault = true,
         };
+        // Enter on either field confirms.
+        username.KeyDown += (_, e) =>
+        {
+            if (e.Key == System.Windows.Input.Key.Enter && vm.LoginConfirmCommand.CanExecute(null))
+            {
+                vm.LoginConfirmCommand.Execute(null);
+            }
+        };
+        password.KeyDown += (_, e) =>
+        {
+            if (e.Key == System.Windows.Input.Key.Enter && vm.LoginConfirmCommand.CanExecute(null))
+            {
+                vm.LoginConfirmCommand.Execute(null);
+            }
+        };
+
         var error = new TextBlock
         {
             Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x7A, 0x7A)),
-            FontSize = 13,
-            Margin = new Thickness(0, 8, 0, 0),
+            FontSize = 12,
+            Margin = new Thickness(0, 10, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            MinHeight = 18,
+            Visibility = string.IsNullOrEmpty(vm.LoginError) ? Visibility.Collapsed : Visibility.Visible,
         };
         error.SetBinding(TextBlock.TextProperty, new Binding(nameof(vm.LoginError)) { Source = vm });
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.LoginError))
+            {
+                error.Visibility = string.IsNullOrEmpty(vm.LoginError) ? Visibility.Collapsed : Visibility.Visible;
+            }
+        };
+
+        var hint = new TextBlock
+        {
+            Text = "默认账号 admin / 1234  （可在 config/ui-layout.json 中配置 app.users）",
+            Foreground = Res<Brush>("ConfigUiMutedTextBrush"),
+            FontSize = 11,
+            Margin = new Thickness(0, 12, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Opacity = 0.85,
+        };
 
         var form = new StackPanel
         {
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
+            MinWidth = 280,
         };
+        form.Children.Add(title);
+        form.Children.Add(subtitle);
+        form.Children.Add(usernameLabel);
         form.Children.Add(username);
+        form.Children.Add(passwordLabel);
         form.Children.Add(password);
         form.Children.Add(confirm);
         form.Children.Add(error);
+        form.Children.Add(hint);
 
-        return new Border { Style = Res<Style>("ConfigUiCardStyle"), Child = form, Padding = new Thickness(28, 24, 28, 24) };
+        var card = new Border
+        {
+            Style = Res<Style>("ConfigUiCardStyle"),
+            Child = form,
+            Padding = new Thickness(32, 28, 32, 28),
+            MinWidth = 360,
+            MaxWidth = 420,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        // Center the card on the deep-blue background.
+        return new Grid
+        {
+            Background = Brushes.Transparent,
+            Children = { card },
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
     }
 
     private UIElement BuildParameterGroups(ConfigurablePageViewModel vm)

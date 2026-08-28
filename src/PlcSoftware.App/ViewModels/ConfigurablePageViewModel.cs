@@ -155,9 +155,16 @@ public sealed partial class ConfigurablePageViewModel : ObservableObject
     public DashboardViewModel? Dashboard { get; }
 
     /// <summary>Accepts the sign-in form (validates against app.users, runs app.loginSuccess).</summary>
+    /// <remarks>Only on valid credentials the shell is signed in and <c>app.loginSuccess</c> is executed —
+    /// a failed login never navigates (the gate keeps the operator on the login page).</remarks>
     [RelayCommand(CanExecute = nameof(CanLoginConfirm))]
-    private void LoginConfirm()
+    private async Task LoginConfirmAsync(CancellationToken cancellationToken)
     {
+        if (IsActionBusy)
+        {
+            return;
+        }
+
         var users = _layout.App.Users;
         var accepted = users.Count == 0
             ? true // no credentials configured (simulation): accept anything.
@@ -171,15 +178,26 @@ public sealed partial class ConfigurablePageViewModel : ObservableObject
             return;
         }
 
-        IsSignedIn = true;
-        LoginError = null;
-        Password = string.Empty;
-        _navigator.SignIn(Username);
-        if (_layout.App.LoginSuccess is not null)
+        IsActionBusy = true;
+        try
         {
-            _ = ExecuteActionAsync(_layout.App.LoginSuccess, CancellationToken.None);
+            IsSignedIn = true;
+            LoginError = null;
+            // Clear the password field (the view's PasswordChanged handler keeps the VM in sync).
+            Password = string.Empty;
+            _navigator.SignIn(Username);
+            if (_layout.App.LoginSuccess is not null)
+            {
+                await ExecuteActionAsync(_layout.App.LoginSuccess, cancellationToken);
+            }
+        }
+        finally
+        {
+            IsActionBusy = false;
         }
     }
+
+    partial void OnIsActionBusyChanged(bool value) => LoginConfirmCommand.NotifyCanExecuteChanged();
 
     private bool CanLoginConfirm() => !IsActionBusy;
 
@@ -232,7 +250,12 @@ public sealed partial class ConfigurablePageViewModel : ObservableObject
 
     private async Task SendCommandAsync(UiActionDefinition action, CancellationToken cancellationToken)
     {
-        IsActionBusy = true;
+        var wasBusy = IsActionBusy;
+        if (!wasBusy)
+        {
+            IsActionBusy = true;
+        }
+
         StatusText = string.Empty;
         try
         {
@@ -266,7 +289,10 @@ public sealed partial class ConfigurablePageViewModel : ObservableObject
         }
         finally
         {
-            IsActionBusy = false;
+            if (!wasBusy)
+            {
+                IsActionBusy = false;
+            }
         }
     }
 

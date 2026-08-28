@@ -299,7 +299,32 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
             ConfigNavItems.Children.Add(button);
         }
 
+        UpdateGateUi();
         Navigate(layout.DefaultPage.Id);
+    }
+
+    /// <summary>True while the configurable login gate is active (login required and not yet signed in).</summary>
+    private bool IsGateActive => _configLayout?.App.LoginRequired == true && !_isSignedIn;
+
+    /// <summary>Shows/hides the top navigation buttons while the login gate is active so the shell is a pure
+    /// sign-in screen until credentials are accepted (the <see cref="Navigate"/> gate still guards programmatic
+    /// navigations).</summary>
+    private void UpdateGateUi()
+    {
+        var gateActive = IsGateActive;
+        ConfigNavItems.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
+        // Legacy nav buttons are direct Buttons of NavButtonsPanel (before ConfigNavItems). Hide/disable them
+        // while gated so 总览/操作/… cannot bypass the configurable gate by hosting a legacy view directly.
+        foreach (var child in NavButtonsPanel.Children)
+        {
+            if (child is Button btn)
+            {
+                // ConfigNavItems and SignInPanel are panels, not Buttons, so only the 8 legacy nav buttons arrive here.
+                btn.IsEnabled = !gateActive;
+                btn.Visibility = gateActive ? Visibility.Collapsed : Visibility.Visible;
+            }
+        }
+        // Keep the title TextBlock visible even when gated (it is not a Button).
     }
 
     /// <inheritdoc />
@@ -373,6 +398,7 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
         _signedInUser = username;
         SignedInText.Text = $"已登录：{username}";
         SignOutButton.Visibility = Visibility.Visible;
+        UpdateGateUi();
     }
 
     /// <inheritdoc />
@@ -387,6 +413,7 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
             vm.SignOut();
         }
 
+        UpdateGateUi();
         if (_configLayout is not null && LoginPageId() is { } login)
         {
             NavigateTo(login); // back to the sign-in gate.
