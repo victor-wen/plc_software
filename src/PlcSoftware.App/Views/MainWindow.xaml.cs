@@ -549,8 +549,6 @@ public partial class MainWindow : Window, IConfigurableUiNavigator
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    private void OnHistoryClicked(object sender, RoutedEventArgs e) => NavigateToLeftPage("history");
-
     // --- Configurable HMI shell (design §7 模块化可配置界面) ------------------------------------------
     private void SetupConfigurablePages()
     {
