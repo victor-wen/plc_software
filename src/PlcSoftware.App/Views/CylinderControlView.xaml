@@ -132,7 +132,7 @@
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
                                             <Button Content="{Binding LeftAction}" Style="{StaticResource ActionButtonStyle}" IsEnabled="False" ToolTip="{Binding LeftSensorKey, StringFormat=到位信号 {0}}" />
                                             <!-- 绿灯：LeftSensor==True 时亮绿 -->
-                                            <Ellipse Style="{StaticResource LampStyle}">
+                                            <Ellipse>
                                                 <Ellipse.Style>
                                                     <Style TargetType="Ellipse" BasedOn="{StaticResource LampStyle}">
                                                         <Style.Triggers>
@@ -159,7 +159,7 @@
                                         <!-- 右侧：指示灯 + 按钮（镜像） -->
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
                                             <TextBlock Text="{Binding RightSensorText}" FontSize="10" Foreground="{StaticResource MutedForegroundBrush}" VerticalAlignment="Center" Margin="0,0,4,0" />
-                                            <Ellipse Style="{StaticResource LampStyle}" Margin="0,0,6,0">
+                                            <Ellipse Margin="0,0,6,0">
                                                 <Ellipse.Style>
                                                     <Style TargetType="Ellipse" BasedOn="{StaticResource LampStyle}">
                                                         <Setter Property="Margin" Value="0,0,6,0" />
